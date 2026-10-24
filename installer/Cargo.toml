@@ -1,0 +1,29 @@
+[package]
+name = "limbochat-setup"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Instalator LiMBOCHAT — jeden plik .exe z aplikacją w środku"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "LiMBOCHAT-Setup"
+path = "src/main.rs"
+
+[dependencies]
+eframe = "0.32"
+egui = "0.32"
+egui_extras = { version = "0.32", features = ["image"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+flate2 = "1"
+directories = "6"
+# Przy dezinstalacji usuwamy też zapisane logowanie z sejfu systemowego.
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "vendored"] }
+# Wymagane przez współdzielony moduł motywu (src/ui/theme.rs).
+window-vibrancy = "0.6"
+raw-window-handle = "0.6"
+tracing = "0.1"
+
+[build-dependencies]
+flate2 = "1"

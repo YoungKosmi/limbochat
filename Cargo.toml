@@ -1,0 +1,82 @@
+[package]
+name = "limbochat"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.85"
+description = "LiMBOCHAT — desktopowy klient i narzędzie moderacji czatu Twitch z natywną obsługą 7TV"
+license = "MIT"
+
+# Plik wykonywalny: LiMBOCHAT.exe (Windows) / LiMBOCHAT (Linux, macOS)
+[[bin]]
+name = "LiMBOCHAT"
+path = "src/main.rs"
+
+# Workspace: aplikacja (ten pakiet) + instalator (installer/).
+# `cargo run` / `cargo build` bez -p budują tylko aplikację — instalator
+# buduje się po niej (build-installer.bat), bo pakuje gotowy LiMBOCHAT.exe.
+[workspace]
+members = [".", "installer", "obs-plugin", "obs-launcher"]
+default-members = ["."]
+
+[dependencies]
+# ── GUI ────────────────────────────────────────────────────────────────
+# eframe = okno + pętla zdarzeń + backend renderujący (wgpu/glow) dla egui
+eframe = { version = "0.32", features = ["persistence"] }
+egui = "0.32"          # ta sama wersja co eframe — używamy typów egui bezpośrednio
+# Loadery obrazów: http (pobieranie + cache), webp/gif (także animowane)
+egui_extras = { version = "0.32", features = ["http", "image", "gif", "webp"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+
+# ── Async runtime ──────────────────────────────────────────────────────
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+async-trait = "0.1"   # trait EmoteSource (async + dyn)
+
+# ── Twitch IRC (anonimowy odczyt czatu; moderacja idzie przez Helix) ──
+twitch-irc = { version = "5", default-features = false, features = [
+    "transport-tcp-rustls-webpki-roots",
+    "with-serde",
+] }
+
+# ── HTTP: Helix API, OAuth (Device Code Flow), 7TV API v3 ─────────────
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# ── Serializacja ──────────────────────────────────────────────────────
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+
+# ── Bezpieczne przechowywanie tokenów (Keychain / Credential Manager / Secret Service)
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "vendored"] }
+
+# ── Współbieżność i struktury danych ──────────────────────────────────
+arc-swap = "1"        # atomowa podmiana mapy emotek bez blokowania wątku UI
+smallvec = "1"        # segmenty wiadomości bez alokacji dla krótkich linii
+
+# ── Błędy i logowanie ─────────────────────────────────────────────────
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# ── Wygląd ────────────────────────────────────────────────────────────
+# Prawdziwe szkło systemowe pod oknem (Mica w Windows 11). Na innych
+# systemach funkcje zwracają błąd „nieobsługiwane” i używamy własnego tła.
+window-vibrancy = "0.6"
+raw-window-handle = "0.6"
+
+# ── Narzędzia ─────────────────────────────────────────────────────────
+open = "5"            # otwarcie strony weryfikacji OAuth w domyślnej przeglądarce
+directories = "6"     # ścieżki konfiguracji zgodne z systemem (bez sekretów!)
+
+[profile.dev.package."*"]
+# egui i dekodery obrazów są bardzo wolne bez optymalizacji — przyspiesza debug
+opt-level = 2
+
+[profile.release.build-override]
+# Skrypt instalatora kompresuje ~20 MB — bez optymalizacji trwałoby to długo.
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

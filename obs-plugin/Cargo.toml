@@ -1,0 +1,59 @@
+[package]
+name = "limbochat-obs"
+version = "0.6.2"
+edition = "2024"
+rust-version = "1.85"
+description = "Silnik LiMBOCHAT dla OBS (osobny proces): czat Twitcha, 7TV, moderacja, LimboAI, overlay, autoaktualizacje"
+license = "MIT"
+publish = false
+
+[lib]
+# Silnik jako biblioteka (testy) + program limbochat-engine(.exe).
+# Samą wtyczkę OBS (limbochat.dll) buduje pakiet obs-launcher — jest mała,
+# uruchamia silnik i prawie nigdy się nie zmienia, więc aktualizacje
+# silnika nie wymagają restartu OBS.
+name = "limbochat_engine"
+
+[[bin]]
+name = "limbochat-engine"
+path = "src/bin/engine.rs"
+
+[dependencies]
+# Serwer panelu (HTTP + WebSocket), tylko na 127.0.0.1.
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "ws", "query"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "process"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Ten sam silnik co aplikacja PC (moduły dołączane przez #[path]).
+async-trait = "0.1"
+twitch-irc = { version = "5", default-features = false, features = ["transport-tcp-rustls-webpki-roots", "with-serde"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "vendored"] }
+arc-swap = "1"
+smallvec = "1"
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+open = "5"
+directories = "6"
+
+# ── Jarvis ────────────────────────────────────────────────────────────
+cpal = "0.15"        # mikrofon (WASAPI na Windows)
+base64 = "0.22"      # audio dla Gemini, komunikaty do procesu mowy
+rustfft = "6"        # widmo dźwięku dla detektora „Hej Limbo”
+
+# ── Autoaktualizacje ──────────────────────────────────────────────────
+ed25519-dalek = { version = "2", features = ["rand_core"] }  # podpis aktualizacji
+rand_core = { version = "0.6", features = ["getrandom"] }    # klucze i tokeny
+sha2 = "0.10"
+
+# ── Alerty: follow i nagrody za punkty (Twitch EventSub przez WebSocket) ──
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+
+[target.'cfg(windows)'.dependencies]
+# Globalny skrót klawiszowy (działa też w grze, bez hooków klawiatury).
+windows-sys = { version = "0.59", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_Foundation", "Win32_System_Threading"] }

@@ -1,0 +1,51 @@
+﻿LiMBOCHAT dla OBS — czat Twitcha z 7TV, moderacją i asystentem głosowym LimboAI
+=================================================================================
+
+Wymagania: Windows 10 lub 11 (64-bit), OBS Studio 28 lub nowszy.
+
+INSTALACJA (tylko raz)
+1. Rozpakuj cały ZIP do jednego folderu (np. na pulpit).
+2. Zamknij OBS.
+3. Kliknij dwa razy ZAINSTALUJ.bat.
+   Jeśli Windows pokaże „System Windows ochronił ten komputer” —
+   kliknij „Więcej informacji” → „Uruchom mimo to” (plik nie ma płatnego podpisu).
+4. Uruchom OBS → menu „Doki” → „Niestandardowe doki przeglądarki…”
+   Nazwa: LiMBOCHAT
+   Adres URL: http://127.0.0.1:47250
+   Kliknij „Zastosuj”. Panel możesz przeciągnąć i zadokować gdziekolwiek.
+
+AKTUALIZACJE — SAME
+Nowe wersje pobierają się i instalują same, w trakcie streama, bez restartu OBS
+(gdy LimboAI nic nie robi; panel mignie na sekundę, czat zostaje).
+Każda aktualizacja jest podpisana przez autora — inna nie zostanie zainstalowana.
+Ustawienia (⚙) → Aktualizacje: „Sprawdź teraz”, tryb „Automatycznie” albo „Pytaj mnie”.
+
+PIERWSZE KROKI
+• Kliknij „Zaloguj” i zaloguj się SWOIM kontem Twitch (kod potwierdzasz na twitch.tv/activate).
+• Kliknij „+” i wpisz nazwę kanału, żeby otworzyć czat.
+
+LimboAI (asystent głosowy)
+• Ikona zębatki → sekcja LimboAI → wklej SWOJE klucze:
+  – Groq (rozpoznawanie mowy, darmowy): https://console.groq.com/keys
+  – Gemini (mózg): https://aistudio.google.com/apikey — albo wybierz „Własny model”
+    (OpenAI, OpenRouter, Groq, a za darmo na komputerze: Ollama / LM Studio).
+  Klucze zapisują się tylko na Twoim komputerze (Menedżer poświadczeń Windows).
+• Naciśnij Shift + Z + X (działa też w grze) i powiedz np. „zmień kategorię na GTA 4”.
+  Możesz ustawić jeden przycisk (np. F13 albo boczny przycisk myszy) i tryb „przytrzymaj i mów”.
+• „Hej Limbo”: ⚙ → Naucz mój głos (3 nagrania) — potem bez klawiszy.
+• Ban, raid, czyszczenie czatu, reklama i dawanie moda zawsze wymagają potwierdzenia („tak”).
+• Jeśli LimboAI mówi z angielskim akcentem: Ustawienia Windows → Czas i język → Mowa → Dodaj głosy → Polski.
+• Jeśli nie słyszy: Ustawienia Windows → Prywatność → Mikrofon → Zezwalaj aplikacjom klasycznym na dostęp.
+
+OVERLAY NA STREAM
+W OBS: Źródła → + → Przeglądarka → adres http://127.0.0.1:47250/overlay, rozmiar 800 × 300.
+Widzowie zobaczą, kiedy LimboAI słucha i co odpowiada.
+
+ODINSTALOWANIE
+Usuń foldery:
+  C:\ProgramData\obs-studio\plugins\limbochat
+  %LOCALAPPDATA%\LiMBOCHAT\engine
+Ustawienia: %APPDATA%\LiMBOCHAT (możesz zostawić).
+
+PROBLEMY
+Logi: %APPDATA%\LiMBOCHAT\engine.log oraz obs-plugin.log

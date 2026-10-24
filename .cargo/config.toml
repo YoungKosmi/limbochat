@@ -1,0 +1,7 @@
+# Statyczne linkowanie runtime'u C (MSVC): LiMBOCHAT.exe nie wymaga
+# zainstalowanego „Visual C++ Redistributable” na komputerze znajomego.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

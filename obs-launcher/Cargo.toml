@@ -1,0 +1,17 @@
+[package]
+name = "limbochat-obs-launcher"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Wtyczka OBS LiMBOCHAT: uruchamia i zatrzymuje silnik (limbochat-engine) — sama prawie nigdy się nie zmienia"
+license = "MIT"
+publish = false
+
+[lib]
+# OBS ładuje wtyczkę jako bibliotekę dynamiczną. Nazwa pliku (limbochat.dll)
+# musi być taka sama jak nazwa folderu wtyczki w ProgramData\obs-studio\plugins.
+name = "limbochat"
+crate-type = ["cdylib"]
+
+# Bez zależności — mała, stabilna biblioteka w procesie OBS.
+[dependencies]

@@ -1,0 +1,6 @@
+target/
+wydania/
+LiMBOCHAT-OBS-dla-znajomego/
+LiMBOCHAT-OBS-dla-znajomego.zip
+# Klucz podpisu aktualizacji NIGDY nie trafia do repozytorium
+*.key

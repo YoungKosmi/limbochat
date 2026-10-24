@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LimboAI overlay</title>
+<style>
+  @font-face { font-family: "Inter"; src: url("/fonts/Inter-Regular.ttf"); font-weight: 400; }
+  @font-face { font-family: "Inter"; src: url("/fonts/Inter-SemiBold.ttf"); font-weight: 600; }
+  @font-face { font-family: "Outfit"; src: url("/fonts/Outfit-Bold.ttf"); font-weight: 700; }
+  :root {
+    --a: 139 108 240; --a-hi: 196 182 255; --scale: 1;
+    --card: 14 11 24;
+  }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  body { font-family: "Inter", system-ui, sans-serif; color: #f3f0fa; }
+  body.preview { background: repeating-conic-gradient(#25222e 0 25%, #1c1a24 0 50%) 0 0 / 22px 22px; }
+
+  .stage { position: fixed; inset: 0; display: flex; padding: 28px; box-sizing: border-box; pointer-events: none; }
+  .stage.bottom-left { align-items: flex-end; justify-content: flex-start; }
+  .stage.bottom-right { align-items: flex-end; justify-content: flex-end; }
+  .stage.bottom-center { align-items: flex-end; justify-content: center; }
+  .stage.top-left { align-items: flex-start; justify-content: flex-start; }
+  .stage.top-right { align-items: flex-start; justify-content: flex-end; }
+  .stage.top-center { align-items: flex-start; justify-content: center; }
+  .stage.top-left .card, .stage.top-right .card, .stage.top-center .card { --from: -26px; }
+
+  .card {
+    --from: 26px;
+    position: relative; display: flex; gap: 16px; align-items: flex-start;
+    width: max-content; max-width: min(560px, calc((100vw - 56px) / var(--scale)));
+    padding: 16px 22px 16px 16px; border-radius: 22px;
+    background: linear-gradient(135deg, rgb(var(--card) / .92), rgb(var(--card) / .84));
+    border: 1px solid rgb(var(--a-hi) / .28);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, .5), 0 0 46px rgb(var(--a) / .28), inset 0 1px 0 rgba(255, 255, 255, .08);
+    transform-origin: left bottom; zoom: var(--scale);
+    opacity: 0; transform: translateY(var(--from)) scale(.96); filter: blur(6px);
+    transition: opacity .45s cubic-bezier(.2, .8, .2, 1), transform .45s cubic-bezier(.2, .8, .2, 1), filter .45s;
+  }
+  .card.on { opacity: 1; transform: none; filter: none; }
+  .card::before {
+    content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; pointer-events: none;
+    background: linear-gradient(120deg, rgb(var(--a-hi) / .9), transparent 35%, transparent 65%, rgb(var(--a) / .8));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+    opacity: .7;
+  }
+
+  /* Kula */
+  .orb { position: relative; flex: none; width: 58px; height: 58px; --level: 0; }
+  .orb .core {
+    position: absolute; inset: 13px; border-radius: 50%;
+    background: radial-gradient(circle at 36% 30%, #fff 0 9%, rgb(var(--a-hi)) 24%, rgb(var(--a)) 62%, rgb(var(--a) / .4) 100%);
+    box-shadow: 0 0 calc(18px + var(--level) * 30px) rgb(var(--a) / .85);
+    transform: scale(calc(1 + var(--level) * .35)); transition: transform .08s linear, box-shadow .08s linear;
+  }
+  .orb .arc {
+    position: absolute; inset: 2px; border-radius: 50%;
+    border: 2px solid transparent; border-top-color: rgb(var(--a-hi)); border-right-color: rgb(var(--a-hi) / .35);
+    animation: spin 3s linear infinite;
+  }
+  .orb .arc2 { inset: 7px; animation-duration: 4.6s; animation-direction: reverse; border-top-color: rgb(var(--a) / .9); }
+  .orb .ring { position: absolute; inset: 13px; border-radius: 50%; border: 2px solid rgb(var(--a-hi) / .7); opacity: 0; }
+  [data-state="listening"] .orb .ring { animation: ripple 1.6s ease-out infinite; }
+  [data-state="listening"] .orb .ring:nth-of-type(2) { animation-delay: .53s; }
+  [data-state="listening"] .orb .ring:nth-of-type(3) { animation-delay: 1.06s; }
+  [data-state="thinking"] .orb .arc { animation-duration: .8s; }
+  [data-state="thinking"] .orb .arc2 { animation-duration: 1.2s; }
+  [data-state="thinking"] .orb .core { animation: breathe 1s ease-in-out infinite; }
+  [data-state="speaking"] .orb .core { animation: talk .4s ease-in-out infinite alternate; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes ripple { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(2.1); } }
+  @keyframes breathe { 50% { transform: scale(.82); filter: brightness(1.3); } }
+  @keyframes talk { from { transform: scale(.92); } to { transform: scale(1.12); } }
+
+  .body { min-width: 0; display: flex; flex-direction: column; gap: 7px; padding-top: 3px; }
+  .head { display: flex; align-items: baseline; gap: 10px; }
+  .name {
+    font-family: "Outfit", sans-serif; font-weight: 700; font-size: 19px; letter-spacing: .02em;
+    background: linear-gradient(90deg, #fff, rgb(var(--a-hi))); -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .state { font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--a-hi) / .85); }
+  .state::after { content: ""; display: inline-block; width: 1.2em; text-align: left; animation: dots 1.2s steps(4) infinite; }
+  [data-state="idle"] .state::after, [data-state="reminder"] .state::after { display: none; }
+  @keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+  .cmd { font-size: 15px; font-style: italic; color: rgba(243, 240, 250, .62); max-width: 460px; }
+  .cmd:empty, .chips:empty, .reply:empty { display: none; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+    background: rgb(var(--a) / .22); border: 1px solid rgb(var(--a-hi) / .35); color: #fff;
+    animation: pop .35s cubic-bezier(.2, 1.4, .4, 1);
+  }
+  .chip.fail { background: rgba(240, 90, 110, .2); border-color: rgba(255, 140, 150, .4); }
+  @keyframes pop { from { opacity: 0; transform: scale(.7); } }
+  .reply { font-size: 18px; font-weight: 600; line-height: 1.35; max-width: 470px; text-shadow: 0 1px 8px rgba(0, 0, 0, .4); }
+  .caret { display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -2px; background: rgb(var(--a-hi)); animation: blink .8s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+<div class="stage bottom-left" id="stage">
+  <div class="card" id="card" data-state="idle">
+    <div class="orb" id="orb"><i class="ring"></i><i class="ring"></i><i class="ring"></i><i class="arc"></i><i class="arc arc2"></i><i class="core"></i></div>
+    <div class="body">
+      <div class="head"><span class="name">LimboAI</span><span class="state" id="state"></span></div>
+      <div class="cmd" id="cmd"></div>
+      <div class="chips" id="chips"></div>
+      <div class="reply" id="reply"></div>
+    </div>
+  </div>
+</div>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const DEMO = params.has("demo");
+let cfg = { show_command: true, show_actions: true, position: "bottom-left", scale: 100 };
+let hideTimer = 0, typeTimer = 0, state = "idle", version = null;
+
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function applyLook(accent, overlay) {
+  if (overlay) cfg = { ...cfg, ...overlay };
+  if (params.get("pos")) cfg.position = params.get("pos");
+  $("stage").className = `stage ${cfg.position}`;
+  document.documentElement.style.setProperty("--scale", String((cfg.scale || 100) / 100));
+  const rgb = hexToRgb(accent);
+  if (rgb) {
+    const hi = rgb.map((c) => Math.round(c + (255 - c) * 0.55));
+    document.documentElement.style.setProperty("--a", rgb.join(" "));
+    document.documentElement.style.setProperty("--a-hi", hi.join(" "));
+  }
+  const right = cfg.position.endsWith("right");
+  $("card").style.transformOrigin = `${right ? "right" : cfg.position.endsWith("center") ? "center" : "left"} ${cfg.position.startsWith("top") ? "top" : "bottom"}`;
+}
+
+function show() { clearTimeout(hideTimer); $("card").classList.add("on"); }
+function hideIn(ms) { clearTimeout(hideTimer); hideTimer = setTimeout(() => $("card").classList.remove("on"), ms); }
+function readingTime(text) { return Math.min(14000, 3500 + text.length * 55); }
+
+function setState(s) {
+  state = s;
+  $("card").dataset.state = s;
+  $("state").textContent = { listening: "Słucham", thinking: "Myślę", speaking: "Mówi", reminder: "Przypomnienie" }[s] || "";
+  if (s === "listening") {
+    clearInterval(typeTimer);
+    $("cmd").textContent = ""; $("chips").replaceChildren(); $("reply").textContent = "";
+    show();
+  } else if (s === "thinking" || s === "speaking") {
+    show();
+  } else if (s === "idle") {
+    $("orb").style.setProperty("--level", "0");
+    const text = $("reply").textContent;
+    hideIn(text ? readingTime(text) : 1200);
+  }
+}
+
+function typeReply(text) {
+  clearInterval(typeTimer);
+  const box = $("reply");
+  const caret = document.createElement("span");
+  caret.className = "caret";
+  let i = 0;
+  box.textContent = "";
+  box.append(caret);
+  typeTimer = setInterval(() => {
+    i = Math.min(text.length, i + 2);
+    box.textContent = text.slice(0, i);
+    if (i < text.length) box.append(caret); else clearInterval(typeTimer);
+  }, 28);
+}
+
+function onJarvis(ev) {
+  switch (ev.e) {
+    case "state": return setState(ev.state);
+    case "level": return $("orb").style.setProperty("--level", Math.min(1, ev.v).toFixed(3));
+    case "transcript":
+      if (cfg.show_command) $("cmd").textContent = `„${ev.text}”`;
+      return;
+    case "action": {
+      if (!cfg.show_actions || ev.text.startsWith("❔")) return;
+      const chip = document.createElement("span");
+      chip.className = `chip ${ev.ok ? "" : "fail"}`;
+      chip.textContent = ev.text;
+      $("chips").append(chip);
+      return;
+    }
+    case "reply": show(); typeReply(ev.text); if (state === "idle") hideIn(readingTime(ev.text)); return;
+    case "error": if (state === "idle") hideIn(400); return;
+    case "reminder":
+      setState("reminder");
+      $("cmd").textContent = ""; $("chips").replaceChildren();
+      show(); typeReply(ev.text); hideIn(readingTime(ev.text));
+      return;
+  }
+}
+
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/overlay/ws`);
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.t === "overlay") {
+      // Po aktualizacji silnika wczytaj nową wersję overlayu.
+      if (version && msg.version && msg.version !== version) return location.reload();
+      version = msg.version || version;
+      applyLook(msg.accent, msg.overlay);
+    }
+    else if (msg.t === "jarvis") onJarvis(msg.ev);
+  };
+  ws.onclose = () => setTimeout(connect, 700);
+}
+
+// Podgląd w ustawieniach panelu: przykładowa rozmowa w pętli.
+async function demoLoop() {
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (;;) {
+    onJarvis({ e: "state", state: "listening" });
+    for (let i = 0; i < 26; i++) { onJarvis({ e: "level", v: Math.abs(Math.sin(i * 0.7)) * 0.8 }); await wait(70); }
+    onJarvis({ e: "state", state: "thinking" });
+    onJarvis({ e: "transcript", text: "Zmień kategorię na GTA 4" });
+    await wait(1100);
+    onJarvis({ e: "action", text: "🎮 Kategoria → Grand Theft Auto IV", ok: true });
+    onJarvis({ e: "reply", text: "Gotowe, kategoria to Grand Theft Auto IV. Powodzenia w Liberty City." });
+    onJarvis({ e: "state", state: "speaking" });
+    await wait(3600);
+    onJarvis({ e: "state", state: "idle" });
+    await wait(6200);
+  }
+}
+
+if (DEMO) {
+  document.body.classList.toggle("preview", params.has("bg"));
+  applyLook(params.get("accent") ? `#${params.get("accent")}` : null, {
+    position: params.get("pos") || "bottom-left",
+    show_command: params.get("cmd") !== "0",
+    show_actions: params.get("act") !== "0",
+    scale: Number(params.get("scale")) || 100,
+  });
+  demoLoop();
+} else {
+  connect();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LiMBOCHAT</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <!-- Tło: płynąca zorza + ziarno (matowy efekt) -->
+  <div class="aurora" aria-hidden="true">
+    <i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i><i class="blob b4"></i>
+  </div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <div class="app">
+    <header class="glass header">
+      <div class="brand">
+        <img class="logo" src="/logo.png" alt="LiMBO">
+        <span class="flow">CHAT</span>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn jarvis-btn" id="jarvis-btn" title="LimboAI"><span class="mini-orb"></span><span class="wake-dot" title="Słucham „Hej Limbo”"></span></button>
+        <button class="icon-btn" id="settings-btn" title="Ustawienia">
+          <svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+        </button>
+        <div id="account"></div>
+      </div>
+      <nav class="tabs-wrap">
+        <div class="tabs" id="tabs"><span class="tab-indicator" id="tab-indicator"></span></div>
+        <form class="add-tab" id="add-form" autocomplete="off">
+          <input id="add-input" placeholder="nazwa kanału ↵" maxlength="25" spellcheck="false">
+        </form>
+        <button class="add-btn" id="add-btn" title="Dołącz do kanału"><span></span></button>
+      </nav>
+      <button class="update-pill" id="update-pill" hidden></button>
+    </header>
+
+    <main class="glass chat-panel" id="chat-panel">
+      <div id="chats"></div>
+      <section class="lobby" id="lobby">
+        <div class="lobby-logo"><img src="/logo.png" alt="LiMBO"></div>
+        <p class="flow tagline">czat Twitcha · moderacja · 7TV</p>
+        <p class="muted">Otwórz kilka kanałów naraz — każdy w osobnej zakładce.</p>
+        <div class="lobby-actions">
+          <button class="btn-accent" id="lobby-join">+ Dołącz do kanału</button>
+          <button class="btn-ghost" id="lobby-login">Zaloguj przez Twitch</button>
+        </div>
+        <div class="lobby-log" id="lobby-log"></div>
+      </section>
+      <button class="jump" id="jump" hidden></button>
+
+      <!-- LimboAI: pojawia się po skrócie klawiszowym lub kliknięciu przycisku -->
+      <section class="glass jarvis" id="jarvis" hidden>
+        <div class="orb" id="orb">
+          <i class="ring"></i><i class="ring"></i><i class="ring"></i>
+          <i class="arc"></i><i class="arc arc2"></i><i class="core"></i>
+        </div>
+        <div class="jv-body">
+          <div class="jv-head"><span class="tag">LimboAI</span><span class="jv-state" id="jv-state"></span></div>
+          <div class="jv-transcript" id="jv-transcript"></div>
+          <div class="jv-actions" id="jv-actions"></div>
+          <div class="jv-reply" id="jv-reply"></div>
+        </div>
+        <button class="jv-close" id="jv-close" title="Zamknij">×</button>
+      </section>
+    </main>
+
+    <footer class="glass composer" id="composer">
+      <button class="emote-btn" id="emote-btn" title="Emotki 7TV">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle class="eye" cx="9" cy="10" r="1"/><circle class="eye" cx="15" cy="10" r="1"/><path class="smile" d="M8.2 13.6c1 1.6 2.3 2.4 3.8 2.4s2.8-.8 3.8-2.4"/></svg>
+      </button>
+      <input id="input" maxlength="500" autocomplete="off" spellcheck="false">
+      <span class="counter" id="counter" hidden></span>
+      <button class="btn-accent send" id="send">Wyślij</button>
+    </footer>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <!-- Wyskakujące elementy -->
+  <div class="glass popover picker" id="picker" hidden>
+    <input id="picker-search" placeholder="Szukaj emotki…" spellcheck="false">
+    <div class="picker-grid" id="picker-grid"></div>
+  </div>
+  <div class="overlay settings-overlay" id="settings" hidden>
+    <div class="glass settings-card" id="settings-card">
+      <div class="settings-top"><h2>Ustawienia</h2><button class="jv-close" id="settings-close" title="Zamknij">×</button></div>
+
+      <div class="tag">Wygląd</div>
+      <div class="field">
+        <span class="label">Kolor motywu</span>
+        <div class="swatches" id="swatches"></div>
+      </div>
+      <label class="switch"><input type="checkbox" id="set-anim"><span></span>Animacje</label>
+      <label class="switch"><input type="checkbox" id="set-time"><span></span>Godziny wiadomości</label>
+      <label class="switch"><input type="checkbox" id="set-mod"><span></span>Szybkie przyciski moderacji</label>
+
+      <div class="tag section">Alerty na czacie</div>
+      <label class="switch"><input type="checkbox" id="al-enabled"><span></span>Animowane alerty (bitsy, suby, gifty, raidy…)</label>
+      <label class="switch"><input type="checkbox" id="al-rhymes"><span></span>Rymowanki LimboAI do nicku</label>
+      <label class="switch sub-switch"><input type="checkbox" id="al-voice"><span></span>Czytaj rymowanki na głos</label>
+      <label class="switch sub-switch"><input type="checkbox" id="al-chat"><span></span>Wysyłaj rymowanki na czat (jako Ty)</label>
+      <label class="switch"><input type="checkbox" id="al-follows"><span></span>Follow na moim kanale</label>
+      <label class="switch"><input type="checkbox" id="al-redemptions"><span></span>Nagrody za punkty kanału</label>
+      <label class="switch"><input type="checkbox" id="al-new"><span></span>„Pierwszy raz na czacie”</label>
+      <label class="switch"><input type="checkbox" id="al-sound"><span></span>Dźwięk w panelu</label>
+      <div class="row-inline test-row">
+        <select id="al-test-kind">
+          <option value="bits">Bitsy (500)</option><option value="bits_big">Bitsy (10 000)</option><option value="sub">Resub</option>
+          <option value="gift">Gift sub</option><option value="mass_gift">Gift-bomba</option><option value="raid">Raid</option>
+          <option value="follow">Follow</option><option value="redemption">Nagroda za punkty</option>
+        </select>
+        <button class="btn-ghost small" id="al-test">Pokaż przykład</button>
+      </div>
+      <p class="hint">Follow i nagrody działają na Twoim kanale i wymagają ponownego zalogowania (nowe uprawnienia). Rymowanki układa mózg LimboAI (Gemini albo własny model).</p>
+
+      <div class="tag section">Obrazki z kappa.lol</div>
+      <div class="seg" id="media-mode">
+        <button data-mode="all">Od wszystkich</button>
+        <button data-mode="trusted">Sub, VIP, mod</button>
+        <button data-mode="off">Wyłączone</button>
+      </div>
+      <p class="hint">Link z kappa.lol pokazuje się od razu jako obrazek na czacie (kliknij, by powiększyć). Pobiera go wtyczka — Twój adres IP nie trafia do serwisu.</p>
+
+      <div class="tag section">LimboAI — asystent głosowy</div>
+      <label class="switch"><input type="checkbox" id="jv-enabled"><span></span>Włączony</label>
+      <label class="switch"><input type="checkbox" id="jv-voice"><span></span>Odpowiada głosem</label>
+      <div class="field">
+        <span class="label">Przycisk do mówienia</span>
+        <div class="row-inline"><span class="keys" id="jv-keys"></span><button class="btn-ghost small" id="jv-record">Zmień</button></div>
+        <div class="seg" id="jv-talk">
+          <button data-mode="toggle">Naciśnij i mów</button>
+          <button data-mode="hold">Przytrzymaj i mów</button>
+        </div>
+        <p class="hint" id="jv-hotkey-note"></p>
+      </div>
+      <div class="field wake-field">
+        <label class="switch"><input type="checkbox" id="jv-wake"><span></span>Aktywacja głosem „Hej Limbo”</label>
+        <div class="wake-box" id="wake-box">
+          <div class="wake-status" id="wake-status"></div>
+          <div class="enroll" id="enroll" hidden>
+            <div class="enroll-dots" id="enroll-dots"><i></i><i></i><i></i></div>
+            <div class="enroll-text" id="enroll-text"></div>
+            <div class="enroll-meter"><span id="enroll-level"></span></div>
+          </div>
+          <div class="row-inline">
+            <button class="btn-accent small" id="wake-train">Naucz mój głos</button>
+            <button class="btn-ghost small" id="wake-cancel" hidden>Anuluj</button>
+            <button class="btn-ghost small" id="wake-reset" hidden>Usuń nagrania</button>
+            <select id="jv-wake-sens" title="Czułość">
+              <option value="1">Czułość: niska</option>
+              <option value="2">Czułość: średnia</option>
+              <option value="3">Czułość: wysoka</option>
+            </select>
+          </div>
+          <p class="hint">Powiedz 3× „Hej Limbo”. Potem wystarczy: <i>„Hej Limbo, zmień kategorię na GTA 4”</i>. Nagrania zostają tylko na Twoim komputerze; dźwięk idzie do rozpoznania mowy dopiero, gdy brzmi jak „Hej Limbo”.</p>
+        </div>
+      </div>
+      <label class="switch"><input type="checkbox" id="jv-mentions"><span></span>Czytaj na głos oznaczenia (@ty)</label>
+      <div class="field">
+        <span class="label">Mikrofon</span>
+        <select id="jv-mic"></select>
+      </div>
+      <div class="field">
+        <span class="label">Mózg (AI)</span>
+        <div class="seg" id="jv-brain">
+          <button data-brain="gemini">Gemini</button>
+          <button data-brain="custom">Własny model</button>
+        </div>
+      </div>
+      <div class="field" id="gemini-box">
+        <span class="label">Model Gemini</span>
+        <select id="jv-model"></select>
+      </div>
+      <div class="llm-box" id="llm-box" hidden>
+        <div class="field">
+          <span class="label">Dostawca</span>
+          <select id="llm-preset"></select>
+        </div>
+        <div class="field" id="llm-url-field">
+          <span class="label">Adres API (zgodny z OpenAI)</span>
+          <input id="llm-url" type="text" placeholder="https://…/v1" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <span class="label">Model</span>
+          <div class="row-inline">
+            <input id="llm-model" type="text" list="llm-models" placeholder="np. gpt-4.1-mini" autocomplete="off" spellcheck="false">
+            <button class="btn-ghost small" id="llm-fetch">Pobierz listę</button>
+          </div>
+          <datalist id="llm-models"></datalist>
+          <p class="hint" id="llm-note"></p>
+        </div>
+        <div class="field key-field" data-provider="llm">
+          <span class="label">Klucz API modelu <b class="key-state"></b></span>
+          <div class="row-inline"><input type="password" placeholder="wklej klucz API…" autocomplete="off" spellcheck="false"><button class="btn-accent small save">Zapisz</button></div>
+          <p class="hint"><span id="llm-key-hint"></span> <a href="#" class="remove">usuń</a></p>
+        </div>
+      </div>
+      <div class="field key-field" data-provider="gemini">
+        <span class="label">Klucz Gemini <b class="key-state"></b></span>
+        <div class="row-inline"><input type="password" placeholder="wklej klucz API…" autocomplete="off" spellcheck="false"><button class="btn-accent small save">Zapisz</button></div>
+        <p class="hint"><span id="gemini-hint">Mózg LimboAI.</span> <a href="#" data-open="https://aistudio.google.com/apikey">Utwórz klucz w Google AI Studio</a> · <a href="#" class="remove">usuń</a></p>
+      </div>
+      <div class="field key-field" data-provider="groq">
+        <span class="label">Klucz Groq <b class="key-state"></b></span>
+        <div class="row-inline"><input type="password" placeholder="wklej klucz API…" autocomplete="off" spellcheck="false"><button class="btn-accent small save">Zapisz</button></div>
+        <p class="hint">Rozpoznawanie mowy (szybkie i dokładne). Bez niego LimboAI użyje Gemini. <a href="#" data-open="https://console.groq.com/keys">Utwórz klucz w Groq</a> · <a href="#" class="remove">usuń</a></p>
+      </div>
+      <p class="hint warn" id="jv-voice-note" hidden>Brak polskiego głosu w Windows — LimboAI mówi głosem domyślnym. Dodaj go: Ustawienia Windows → Czas i język → Mowa → Dodaj głosy → Polski.</p>
+      <p class="hint">Klucze są zapisywane w sejfie Windows (Menedżer poświadczeń), nie w pliku ustawień. Panel ich nie odczytuje.</p>
+      <button class="btn-accent" id="jv-test">Wypróbuj LimboAI</button>
+
+      <div class="tag section">Overlay na stream</div>
+      <p class="hint">Pokaż widzom, kiedy LimboAI słucha i co odpowiada. W OBS: <b>Źródła → + → Przeglądarka</b>, wklej adres, rozmiar 800 × 300 (przezroczyste tło jest automatyczne).</p>
+      <div class="row-inline copy-row">
+        <code id="ov-url">http://127.0.0.1:47250/overlay</code>
+        <button class="btn-accent small" id="ov-copy">Kopiuj</button>
+      </div>
+      <div class="ov-preview"><iframe id="ov-frame" title="Podgląd overlayu" tabindex="-1"></iframe></div>
+      <label class="switch"><input type="checkbox" id="ov-cmd"><span></span>Pokazuj moje polecenie</label>
+      <label class="switch"><input type="checkbox" id="ov-act"><span></span>Pokazuj wykonane akcje</label>
+      <div class="field two">
+        <label><span class="label">Pozycja</span>
+          <select id="ov-pos">
+            <option value="bottom-left">Dół, lewo</option><option value="bottom-center">Dół, środek</option><option value="bottom-right">Dół, prawo</option>
+            <option value="top-left">Góra, lewo</option><option value="top-center">Góra, środek</option><option value="top-right">Góra, prawo</option>
+          </select></label>
+        <label><span class="label">Rozmiar</span>
+          <select id="ov-scale">
+            <option value="80">Mały</option><option value="100">Średni</option><option value="125">Duży</option><option value="150">Bardzo duży</option>
+          </select></label>
+      </div>
+      <div class="tag section">Aktualizacje</div>
+      <div class="update-card" id="up-card">
+        <div class="up-row"><span class="up-ver" id="up-ver"></span><span class="up-state" id="up-state"></span></div>
+        <p class="hint" id="up-note"></p>
+        <div class="row-inline">
+          <button class="btn-ghost small" id="up-check">Sprawdź teraz</button>
+          <button class="btn-accent small" id="up-apply" hidden>Zainstaluj teraz</button>
+        </div>
+      </div>
+      <div class="seg" id="up-mode">
+        <button data-mode="auto">Automatycznie</button>
+        <button data-mode="ask">Pytaj mnie</button>
+      </div>
+      <p class="hint">Automatycznie: nowa wersja instaluje się sama, gdy LimboAI nic nie robi — panel mignie na sekundę, czat zostaje, OBS działa dalej.</p>
+      <div class="settings-note">Panel: <code>http://127.0.0.1:47250</code></div>
+    </div>
+  </div>
+  <div class="glass menu" id="menu" hidden></div>
+  <div class="lightbox" id="lightbox" hidden>
+    <div class="lb-media" id="lb-media"></div>
+    <button class="btn-ghost small" id="lb-open">Otwórz w przeglądarce</button>
+  </div>
+  <div class="glass tip" id="tip" hidden></div>
+  <div class="overlay" id="login-overlay" hidden>
+    <div class="glass login-card">
+      <img src="/logo.png" alt="LiMBO" class="login-logo">
+      <h2>Logowanie przez Twitch</h2>
+      <p class="muted">Potwierdź w przeglądarce, że widzisz ten kod:</p>
+      <div class="code" id="login-code"></div>
+      <div class="row">
+        <button class="btn-ghost" id="login-copy">Kopiuj kod</button>
+        <button class="btn-ghost" id="login-open">Otwórz stronę</button>
+      </div>
+      <div class="countdown"><i id="login-bar"></i></div>
+      <p class="mono faint" id="login-time"></p>
+      <button class="btn-link" id="login-cancel">Anuluj</button>
+    </div>
+  </div>
+  <div class="overlay offline" id="offline" hidden>
+    <div class="glass login-card">
+      <div class="spinner"></div>
+      <h2>Łączenie z wtyczką…</h2>
+      <p class="muted">Panel działa razem z OBS. Jeśli OBS jest uruchomiony, a to okno nie znika — sprawdź, czy wtyczka LiMBOCHAT jest zainstalowana.</p>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
