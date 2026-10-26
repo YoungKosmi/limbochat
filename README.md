@@ -60,13 +60,16 @@
 - Kategoria, tytuł, timeout, ban, mod, VIP, raid, klip, ankieta, zakłady i wiele więcej
 - Odpowiada po polsku głosem; pyta o potwierdzenie przy groźnych akcjach
 - Mózg do wyboru: **Gemini** albo **własny model** (OpenAI, OpenRouter, Groq, Ollama, LM Studio)
+- **Steruje OBS-em**: sceny, mikrofon, kamerka, nagrywanie, powtórka
+- **Pamięta widzów**: kto lubi koty, w co gra, od kiedy ogląda
 
 </td>
 <td valign="top">
 
 ### 📺 Overlay i reszta
 - **Overlay na stream** — widzowie widzą, kiedy LimboAI słucha i co odpowiada
-- **Autoaktualizacje bez restartu OBS** — podpisane, z przekazaniem czatu
+- **Podsumowanie streama** po kliknięciu „Zakończ stream” w OBS: wykresy, top czatu, wsparcie i tekst od LimboAI
+- **Autoaktualizacje bez restartu OBS** — podpisane, z przekazaniem czatu i okienkiem „Co nowego”
 - Motyw „liquid glass” w dowolnym kolorze (zmiana też głosem)
 - Wszystko działa lokalnie, klucze w sejfie Windows
 
@@ -127,6 +130,9 @@ Skonfiguruj raz w ⚙ → *LimboAI*: wklej klucz **Groq** (darmowy, rozpoznawani
 | „Przypomnij mi za 10 minut o wodzie” | przypomni głosem |
 | „Wylosuj kogoś z czatu” | losuje widza |
 | „Hej Limbo, włącz slow mode” | działa bez klawiszy (po nauczeniu głosu) |
+| „Przełącz na scenę Przerwa” / „Wycisz mikrofon” | steruje OBS-em |
+| „Schowaj kamerkę” / „Zacznij nagrywać” / „Zapisz powtórkę” | steruje OBS-em |
+| „Zapamiętaj, że kasia lubi koty” / „Co wiesz o kasi?” | pamięć o widzach |
 
 Ban, czyszczenie czatu, raid, reklama i nadanie moda **zawsze** wymagają potwierdzenia — wymusza to kod, nie tylko AI.
 
@@ -142,6 +148,24 @@ Ban, czyszczenie czatu, raid, reklama i nadanie moda **zawsze** wymagają potwie
 
 - Jeden klawisz (F1–F24, klawiatura numeryczna, Pause…) albo boczny przycisk myszy; tryb *naciśnij i mów* albo *przytrzymaj i mów*.
 - „Hej Limbo”: ⚙ → *Naucz mój głos* → 3 nagrania. Wykrywanie działa lokalnie na wzorcu Twojego głosu; do chmury trafia tylko krótki fragment, gdy brzmi jak „Hej Limbo”.
+
+</details>
+
+<details>
+<summary><b>Połączenie z OBS</b> (sterowanie głosem i podsumowanie streama)</summary>
+
+1. W OBS: **Narzędzia → Ustawienia serwera WebSocket** → zaznacz *Włącz serwer WebSocket*.
+2. Kliknij *Pokaż dane połączenia* i skopiuj hasło.
+3. W panelu LiMBOCHAT: ⚙ → **OBS — sterowanie głosem** → wklej hasło → *Zapisz*. Hasło trafia do sejfu Windows.
+
+Po kliknięciu *Zakończ stream* w OBS panel pokaże podsumowanie (można też ⚙ → *Podsumuj teraz*). Ostatnie 30 podsumowań zostaje na komputerze.
+
+</details>
+
+<details>
+<summary><b>Pamięć o widzach</b></summary>
+
+LimboAI zapisuje krótkie fakty o widzach (maks. 12 na osobę) i liczy ich wiadomości, streamy i wsparcie. Fakty dopisujesz głosem albo w karcie widza (kliknij nick); LimboAI może też sam wyłapywać je z czatu co 10 minut. Pamięć leży tylko na Twoim komputerze (`%APPDATA%\LiMBOCHAT\pamiec-widzow.json`) i nie zapisuje danych wrażliwych.
 
 </details>
 

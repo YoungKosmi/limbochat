@@ -70,6 +70,8 @@ pub enum AlertKind {
     NewChatter,
     Follow,
     Redemption { reward: String, cost: u64, input: Option<String> },
+    /// Powitanie VIP-a (np. twórcy LiMBOCHAT) — `title` na kartę, `greeting` mówi LimboAI.
+    Vip { title: String, greeting: String },
 }
 
 /// "1000" → "1", "Prime" → "Prime".

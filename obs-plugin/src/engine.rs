@@ -40,6 +40,8 @@ pub struct ControlState {
     pub token: Arc<str>,
     pub obs_pid: Arc<AtomicU32>,
     pub tx: mpsc::UnboundedSender<Control>,
+    /// Otwarte panele i overlaye (tryb przeglądarkowy kończy pracę, gdy nikt nie patrzy).
+    pub clients: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 #[derive(Default)]
@@ -47,6 +49,8 @@ struct Args {
     obs_pid: u32,
     takeover: bool,
     updated_from: Option<String>,
+    /// Bez OBS: panel w przeglądarce (LiMBOCHAT.bat). Silnik kończy pracę, gdy panel jest zamknięty.
+    standalone: bool,
 }
 
 /// Folder silnika: `%LOCALAPPDATA%\LiMBOCHAT\engine` (zapisywalny bez uprawnień
@@ -69,6 +73,9 @@ pub fn main() -> i32 {
             return 0;
         }
         "--keygen" => return update::cli_keygen(Path::new(arg(1))),
+        "--install" => return cli_install(),
+        "--stop" => return cli_stop(),
+        "--export-keys" => return crate::share::cli_export(Path::new(arg(1))),
         "--pubkey" => return update::cli_pubkey(Path::new(arg(1))),
         "--sign" => {
             return update::cli_sign(Path::new(arg(1)), arg(2), arg(3), Path::new(arg(4)), Path::new(arg(5)));
@@ -84,6 +91,7 @@ pub fn main() -> i32 {
                 i += 1;
             }
             "--takeover" => args.takeover = true,
+            "--standalone" => args.standalone = true,
             "--updated-from" => {
                 args.updated_from = Some(arg(i + 1).to_owned()).filter(|v| !v.is_empty());
                 i += 1;
@@ -121,10 +129,15 @@ async fn run(args: Args) -> i32 {
     let token: Arc<str> = random_token().into();
     write_private(&dir.join("control.token"), &token);
     update::cleanup(&dir);
+    crate::share::import_pending(&dir).await;
 
     let (control_tx, mut control_rx) = mpsc::unbounded_channel();
     spawn_watchdog(obs_pid.clone(), control_tx.clone());
-    let control = ControlState { token, obs_pid: obs_pid.clone(), tx: control_tx.clone() };
+    let clients = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    if args.standalone {
+        spawn_idle_watch(clients.clone(), control_tx.clone());
+    }
+    let control = ControlState { token, obs_pid: obs_pid.clone(), tx: control_tx.clone(), clients };
 
     let mut listener = Some(listener);
     let mut handover = if args.takeover { take_handover(&dir) } else { None };
@@ -161,7 +174,7 @@ async fn run(args: Args) -> i32 {
 
                 let previous = update::current(&dir);
                 let started = update::set_current(&dir, &staged.exe).is_ok()
-                    && spawn_takeover(&staged.exe, obs_pid.load(Ordering::Relaxed)).is_ok();
+                    && spawn_takeover(&staged.exe, obs_pid.load(Ordering::Relaxed), args.standalone).is_ok();
                 if started && wait_for_version(&staged.version, Duration::from_secs(12)).await {
                     tracing::info!("wersja {} przejęła pracę — kończę", staged.version);
                     return 0;
@@ -210,6 +223,11 @@ async fn acquire_port(dir: &Path, args: &Args) -> Option<TcpListener> {
             return Some(listener);
         }
         if let Some(version) = running_engine_version().await {
+            if args.obs_pid == 0 {
+                // Tryb przeglądarkowy, a silnik już działa (np. z OBS) — panel połączy się z nim.
+                tracing::info!("silnik {version} już działa — używam go");
+                return None;
+            }
             let token = std::fs::read_to_string(dir.join("control.token")).unwrap_or_default();
             let ok = control_post(&format!("/control/adopt?pid={}", args.obs_pid), token.trim()).await;
             tracing::info!("silnik {version} już działa — przekazano mu OBS (ok: {ok}), kończę");
@@ -273,9 +291,13 @@ async fn wait_for_version(version: &str, total: Duration) -> bool {
     false
 }
 
-fn spawn_takeover(exe: &Path, obs_pid: u32) -> std::io::Result<()> {
+fn spawn_takeover(exe: &Path, obs_pid: u32, standalone: bool) -> std::io::Result<()> {
     let mut cmd = std::process::Command::new(exe);
-    cmd.args(["--takeover", "--obs-pid", &obs_pid.to_string(), "--updated-from", crate::version()])
+    cmd.args(["--takeover", "--obs-pid", &obs_pid.to_string(), "--updated-from", crate::version()]);
+    if standalone {
+        cmd.arg("--standalone");
+    }
+    cmd
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -301,6 +323,78 @@ fn take_handover(dir: &Path) -> Option<Handover> {
     let bytes = std::fs::read(&path).ok()?;
     let _ = std::fs::remove_file(&path);
     serde_json::from_slice(&bytes).ok()
+}
+
+// ── Tryb przeglądarkowy (LiMBOCHAT.bat) ────────────────────────────────
+
+/// Kończy pracę, gdy żaden panel ani overlay nie jest otwarty przez 3 minuty
+/// (na pierwsze otwarcie czekamy do 5 minut).
+fn spawn_idle_watch(clients: Arc<std::sync::atomic::AtomicUsize>, tx: mpsc::UnboundedSender<Control>) {
+    tokio::spawn(async move {
+        let mut idle = Duration::ZERO;
+        // Testy: LIMBOCHAT_IDLE_SECS skraca czas czekania.
+        let short = std::env::var("LIMBOCHAT_IDLE_SECS").ok().and_then(|v| v.parse::<u64>().ok());
+        let mut limit = Duration::from_secs(short.unwrap_or(300));
+        loop {
+            let tick = Duration::from_secs(if short.is_some() { 1 } else { 10 });
+            tokio::time::sleep(tick).await;
+            if clients.load(Ordering::Relaxed) > 0 {
+                idle = Duration::ZERO;
+                limit = Duration::from_secs(short.unwrap_or(180));
+            } else {
+                idle += tick;
+                if idle >= limit {
+                    let _ = tx.send(Control::Exit("panel w przeglądarce zamknięty"));
+                    return;
+                }
+            }
+        }
+    });
+}
+
+/// `--install`: kopiuje ten plik do folderu silnika (jeśli nie ma nowszego) i wypisuje,
+/// który plik uruchamiać. Pobrana autoaktualizacja (nowsza) zostaje.
+fn cli_install() -> i32 {
+    let dir = engine_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let installed = update::current(&dir).filter(|name| dir.join(name).exists());
+    let installed_version = installed.as_deref().and_then(|n| n.strip_prefix("limbochat-engine-")).map(|v| v.trim_end_matches(".exe").to_owned());
+    let keep = installed_version.as_deref().is_some_and(|v| !update::is_newer(crate::version(), v));
+    if keep {
+        println!("{}", dir.join(installed.unwrap_or_default()).display());
+        return 0;
+    }
+    let name = format!("limbochat-engine-{}{}", crate::version(), if cfg!(windows) { ".exe" } else { "" });
+    let target = dir.join(&name);
+    let copied = std::env::current_exe().and_then(|me| {
+        if me != target {
+            std::fs::copy(&me, &target)?;
+        }
+        Ok(())
+    });
+    match copied.and_then(|_| update::set_current(&dir, &target)) {
+        Ok(()) => {
+            println!("{}", target.display());
+            0
+        }
+        Err(e) => {
+            eprintln!("Nie mogę zainstalować silnika w {}: {e}", dir.display());
+            1
+        }
+    }
+}
+
+/// `--stop`: zatrzymuje działający silnik.
+fn cli_stop() -> i32 {
+    let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() else { return 1 };
+    let token = std::fs::read_to_string(engine_dir().join("control.token")).unwrap_or_default();
+    if rt.block_on(control_post("/control/shutdown", token.trim())) {
+        println!("LiMBOCHAT zatrzymany.");
+        0
+    } else {
+        println!("LiMBOCHAT nie był uruchomiony.");
+        0
+    }
 }
 
 // ── Pilnowanie OBS ─────────────────────────────────────────────────────

@@ -17,6 +17,8 @@ pub enum Provider {
     Groq,
     /// Własny model (OpenAI, OpenRouter itd.).
     Llm,
+    /// Hasło serwera WebSocket w OBS (sterowanie OBS-em).
+    Obs,
 }
 
 impl Provider {
@@ -25,6 +27,7 @@ impl Provider {
             "gemini" => Some(Self::Gemini),
             "groq" => Some(Self::Groq),
             "llm" => Some(Self::Llm),
+            "obs" => Some(Self::Obs),
             _ => None,
         }
     }
@@ -34,6 +37,7 @@ impl Provider {
             Self::Gemini => "gemini-api-key",
             Self::Groq => "groq-api-key",
             Self::Llm => "custom-llm-api-key",
+            Self::Obs => "obs-websocket-password",
         }
     }
 
@@ -42,6 +46,7 @@ impl Provider {
             Self::Gemini => "LIMBOCHAT_GEMINI_KEY",
             Self::Groq => "LIMBOCHAT_GROQ_KEY",
             Self::Llm => "LIMBOCHAT_LLM_KEY",
+            Self::Obs => "LIMBOCHAT_OBS_PASSWORD",
         }
     }
 
@@ -50,6 +55,7 @@ impl Provider {
             Self::Gemini => "Gemini",
             Self::Groq => "Groq",
             Self::Llm => "własnego modelu",
+            Self::Obs => "OBS",
         }
     }
 }

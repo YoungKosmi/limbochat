@@ -41,6 +41,7 @@ mod parser;
 #[path = "../../src/seventv.rs"]
 mod seventv;
 
+mod changelog;
 mod config;
 mod demo;
 mod eventsub;
@@ -48,8 +49,12 @@ pub mod engine;
 mod hub;
 mod jarvis;
 mod media;
+mod memory;
+mod obs;
 mod protocol;
 mod server;
+mod share;
+mod summary;
 pub mod update;
 
 /// Stały port — adres panelu w OBS musi się nie zmieniać.

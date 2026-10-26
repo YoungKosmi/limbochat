@@ -1,0 +1,31 @@
+﻿LiMBOCHAT na komputer (bez OBS)
+===============================
+
+Ten sam LiMBOCHAT co w OBS — czat Twitcha z 7TV, moderacja, LimboAI, animowane alerty,
+obrazki z kappa.lol i autoaktualizacje — tylko w osobnym, szklanym oknie.
+
+URUCHOMIENIE
+1. Rozpakuj cały ZIP do jednego folderu (np. Dokumenty\LiMBOCHAT).
+2. Kliknij dwa razy LiMBOCHAT.bat.
+   Jeśli Windows pokaże „System Windows ochronił ten komputer” —
+   „Więcej informacji” → „Uruchom mimo to”.
+3. Otworzy się okno LiMBOCHAT. Zaloguj się kontem Twitch i otwórz kanał (+).
+
+Wygodnie: prawy przycisk na LiMBOCHAT.bat → Wyślij do → Pulpit (utwórz skrót).
+
+ZAMYKANIE
+Zamknij okno — LiMBOCHAT wyłączy się sam po 3 minutach (żeby krótkie zamknięcie
+okna nie zrywało czatu). Od razu: Zamknij LiMBOCHAT.bat.
+
+OVERLAY NA STREAM (opcjonalnie)
+Działa też bez wtyczki OBS: w OBS Źródła → + → Przeglądarka → http://127.0.0.1:47250/overlay
+(LiMBOCHAT musi być uruchomiony).
+
+AKTUALIZACJE
+Nowe wersje pobierają się i instalują same. Ustawienia (⚙) → Aktualizacje.
+
+Gdy masz też wtyczkę OBS: oba sposoby korzystają z tego samego silnika i ustawień —
+jeśli OBS jest włączony, LiMBOCHAT.bat po prostu otworzy okno z tym samym czatem.
+
+PROBLEMY
+Log: %APPDATA%\LiMBOCHAT\engine.log

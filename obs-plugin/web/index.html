@@ -109,11 +109,43 @@
         <select id="al-test-kind">
           <option value="bits">Bitsy (500)</option><option value="bits_big">Bitsy (10 000)</option><option value="sub">Resub</option>
           <option value="gift">Gift sub</option><option value="mass_gift">Gift-bomba</option><option value="raid">Raid</option>
-          <option value="follow">Follow</option><option value="redemption">Nagroda za punkty</option>
+          <option value="follow">Follow</option><option value="redemption">Nagroda za punkty</option><option value="vip">Powitanie twórcy (Szef Kosmi)</option>
         </select>
         <button class="btn-ghost small" id="al-test">Pokaż przykład</button>
       </div>
       <p class="hint">Follow i nagrody działają na Twoim kanale i wymagają ponownego zalogowania (nowe uprawnienia). Rymowanki układa mózg LimboAI (Gemini albo własny model).</p>
+
+      <div class="tag section">OBS — sterowanie głosem</div>
+      <label class="switch"><input type="checkbox" id="obs-enabled"><span></span>LimboAI steruje OBS-em (sceny, mikrofon, nagrywanie)</label>
+      <div class="obs-status" id="obs-status"></div>
+      <div class="field obs-pass">
+        <span class="label">Hasło serwera WebSocket <b class="key-state" id="obs-pass-state"></b></span>
+        <div class="row-inline"><input type="password" id="obs-pass" placeholder="wklej hasło z OBS…" autocomplete="off" spellcheck="false"><button class="btn-accent small" id="obs-pass-save">Zapisz</button></div>
+        <p class="hint">W OBS: <b>Narzędzia → Ustawienia serwera WebSocket</b> → zaznacz „Włącz serwer WebSocket” → „Pokaż dane połączenia” → skopiuj hasło. Port: <input id="obs-port" class="mini-input" type="number" min="1" max="65535"> · <a href="#" id="obs-pass-remove">usuń hasło</a></p>
+      </div>
+      <p class="hint">Powiedz np.: „przełącz na scenę Przerwa”, „wycisz mikrofon”, „schowaj kamerkę”, „zacznij nagrywać”, „zapisz powtórkę”. Po kliknięciu „Zakończ stream” w OBS pojawi się podsumowanie.</p>
+
+      <div class="tag section">Pamięć o widzach</div>
+      <label class="switch"><input type="checkbox" id="mem-enabled"><span></span>LimboAI pamięta widzów</label>
+      <label class="switch sub-switch"><input type="checkbox" id="mem-learn"><span></span>Ucz się sam z czatu (co 10 min)</label>
+      <div class="row-inline mem-row"><span class="hint" id="mem-count"></span><button class="btn-ghost small danger" id="mem-clear">Wyczyść pamięć</button></div>
+      <p class="hint">Kliknij nick na czacie, żeby zobaczyć i dopisać notatki. Głosem: „zapamiętaj, że kasia lubi koty”, „co wiesz o kasi?”. Pamięć jest tylko na tym komputerze; LimboAI nie zapisuje danych wrażliwych.</p>
+
+      <div class="tag section">Podsumowanie streama</div>
+      <label class="switch"><input type="checkbox" id="sum-enabled"><span></span>Pokaż podsumowanie po zakończeniu streama</label>
+      <label class="switch sub-switch"><input type="checkbox" id="sum-voice"><span></span>LimboAI mówi krótko na głos</label>
+      <div class="row-inline"><button class="btn-ghost small" id="sum-now">Podsumuj teraz</button><button class="btn-ghost small" id="sum-history">Poprzednie streamy</button></div>
+      <div class="sum-list" id="sum-list" hidden></div>
+
+      <div class="tag section">Powitania VIP</div>
+      <label class="switch"><input type="checkbox" id="gr-creator"><span></span>Witaj twórcę LiMBOCHAT (kosmiaczek)</label>
+      <label class="switch"><input type="checkbox" id="gr-voice"><span></span>LimboAI mówi powitanie na głos</label>
+      <label class="switch"><input type="checkbox" id="gr-overlay"><span></span>Złoty efekt na overlayu</label>
+      <div class="field">
+        <span class="label">Moi VIP-owie (nick: powitanie — każdy w nowej linii)</span>
+        <textarea id="gr-custom" rows="3" spellcheck="false" placeholder="nocnymarek: Witaj, Marku, królu nocnych streamów!"></textarea>
+      </div>
+      <p class="hint">Gdy ta osoba przywita się na czacie („siema”, „hej”, „dzień dobry”, o/…), LimboAI wita ją głosem i efektem — najwyżej raz na 30 minut.</p>
 
       <div class="tag section">Obrazki z kappa.lol</div>
       <div class="seg" id="media-mode">
@@ -238,6 +270,7 @@
         <div class="row-inline">
           <button class="btn-ghost small" id="up-check">Sprawdź teraz</button>
           <button class="btn-accent small" id="up-apply" hidden>Zainstaluj teraz</button>
+          <button class="btn-ghost small" id="up-changelog">Co nowego</button>
         </div>
       </div>
       <div class="seg" id="up-mode">
@@ -249,6 +282,7 @@
     </div>
   </div>
   <div class="glass menu" id="menu" hidden></div>
+  <div class="modal" id="modal" hidden><div class="glass modal-card" id="modal-card"></div></div>
   <div class="lightbox" id="lightbox" hidden>
     <div class="lb-media" id="lb-media"></div>
     <button class="btn-ghost small" id="lb-open">Otwórz w przeglądarce</button>

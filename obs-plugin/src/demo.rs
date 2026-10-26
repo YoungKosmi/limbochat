@@ -153,3 +153,37 @@ pub fn alert(channel: &str, kind: &str, map: &EmoteMap) -> ChatAlert {
 
 /// Kolejność alertów w trybie demo.
 pub const ALERT_CYCLE: [&str; 8] = ["bits", "sub", "follow", "mass_gift", "redemption", "raid", "gift", "bits_big"];
+
+/// Przykładowe statystyki 97-minutowego streama (podgląd podsumowania w trybie demo).
+pub fn stream_stats(started: chrono::DateTime<chrono::Utc>) -> crate::summary::Stats {
+    use chrono::Duration;
+    let mut s = crate::summary::Stats::start("demo", started);
+    let people = [("kasia_gra", "kasia_gra"), ("gadula", "Gaduła"), ("modziomek", "ModZiomek"), ("nocnymarek", "NocnyMarek"),
+        ("szerokifan", "SzerokiFan"), ("widz_123", "widz_123"), ("pixelka", "Pixelka"), ("ziomal99", "Ziomal99")];
+    let emotes = ["KEKW", "catJAM", "pepeD", "KEKW", "catKISS", "PogU", "KEKW", "wideVIBE"];
+    let mut n: u64 = 7;
+    for minute in 0..97i64 {
+        let at = started + Duration::minutes(minute);
+        // Widzowie: rozkręcenie, szczyt po raidzie, spadek na koniec.
+        let base = 38 + minute * 6 / 5 - if minute > 80 { (minute - 80) * 3 } else { 0 } + if minute > 62 { 35 } else { 0 };
+        s.on_viewers((base + (minute * 7 % 9)) as u64, at);
+        let per_min = 2 + (minute * 13 % 7) as usize + if (60..72).contains(&minute) { 6 } else { 0 };
+        for _ in 0..per_min {
+            n = n.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let (login, name) = people[[0, 0, 1, 1, 1, 2, 3, 4, 4, 5, 6, 7][((n >> 33) % 12) as usize]];
+            let emote = emotes[((n >> 40) % 8) as usize];
+            let with = if (n >> 20) % 3 == 0 { vec![emote.to_owned()] } else { Vec::new() };
+            s.on_message(login, name, "gg", &with, at);
+        }
+    }
+    for _ in 0..9 { s.on_new_chatter(); }
+    for _ in 0..14 { s.on_follow(); }
+    for _ in 0..6 { s.on_redemption(); }
+    s.on_bits("szerokifan", "SzerokiFan", 500);
+    s.on_bits("pixelka", "Pixelka", 100);
+    s.on_sub("nocnymarek", "NocnyMarek", true);
+    s.on_sub("ziomal99", "Ziomal99", false);
+    s.on_gifts("modziomek", "ModZiomek", 5);
+    s.on_raid("ZaprzyjaznionyStreamer", 34);
+    s
+}

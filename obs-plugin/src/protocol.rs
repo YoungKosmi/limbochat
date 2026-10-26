@@ -42,6 +42,13 @@ pub enum ServerMsg {
     Update(crate::update::UpdateStatus),
     /// Zmiana istniejącego alertu (rymowanka gotowa, kolejni obdarowani w gift-bombie).
     AlertUpdate { channel: String, id: String, alert: AlertDto },
+    Obs(crate::obs::ObsStatus),
+    /// Podsumowanie streama (nowe albo z dopisanym tekstem LimboAI).
+    Summary(crate::summary::Summary),
+    Summaries { list: Vec<crate::summary::Summary> },
+    Changelog { entries: Vec<crate::changelog::Entry> },
+    /// Pamięć o widzu (karta widza w panelu).
+    Memory { login: String, viewer: Option<crate::memory::Viewer>, count: usize },
     Jarvis { ev: JarvisEvent },
 }
 
@@ -58,6 +65,12 @@ pub struct Snapshot {
     /// Wersja silnika — panel przeładowuje się, gdy po aktualizacji jest inna.
     pub version: String,
     pub update: crate::update::UpdateStatus,
+    pub obs: crate::obs::ObsStatus,
+    /// „Co nowego” — tylko zaraz po aktualizacji.
+    pub changelog: Vec<crate::changelog::Entry>,
+    /// Ostatnie podsumowanie streama (jeśli było w tej sesji).
+    pub summary: Option<crate::summary::Summary>,
+    pub memory_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -240,6 +253,21 @@ pub enum ClientMsg {
     Alerts(crate::config::AlertsConfig),
     /// Podgląd obrazków z linków: all / trusted / off.
     MediaPreviews { mode: String },
+    ObsSettings(crate::obs::ObsConfig),
+    /// `None` usuwa hasło. Hasło nigdy nie wraca do panelu.
+    ObsPassword { password: Option<String> },
+    MemorySettings(crate::config::MemoryConfig),
+    MemoryGet { login: String },
+    MemoryAdd { login: String, name: String, text: String },
+    MemoryForget { login: String, index: usize },
+    MemoryClear,
+    SummarySettings(crate::config::SummaryConfig),
+    /// Podsumuj teraz (bez czekania na koniec streama).
+    SummaryNow,
+    SummaryHistory,
+    Changelog,
+    /// Powitania VIP-ów.
+    Greetings(crate::config::GreetingsConfig),
     /// Przykładowy alert z ustawień (tylko w panelu).
     AlertTest { kind: String },
     /// Aktualizacje: sprawdź teraz / zainstaluj teraz / tryb (auto | ask).

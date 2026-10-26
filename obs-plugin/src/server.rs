@@ -184,12 +184,17 @@ async fn shutdown_engine(State(app): State<App>, headers: HeaderMap) -> Response
     if !token_ok(&app, &headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let _ = app.control.tx.send(Control::Exit("zamknięcie OBS"));
+    let _ = app.control.tx.send(Control::Exit("polecenie zatrzymania (OBS albo Zamknij LiMBOCHAT)"));
     StatusCode::NO_CONTENT.into_response()
 }
 
 async fn websocket(ws: WebSocketUpgrade, State(app): State<App>) -> Response {
-    ws.on_upgrade(move |socket| connection(socket, app.hub, app.shutdown))
+    let clients = app.control.clients.clone();
+    ws.on_upgrade(move |socket| async move {
+        clients.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        connection(socket, app.hub, app.shutdown).await;
+        clients.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    })
 }
 
 async fn connection(socket: WebSocket, hub: HubHandle, mut shutdown: watch::Receiver<bool>) {
@@ -247,7 +252,12 @@ async fn connection(socket: WebSocket, hub: HubHandle, mut shutdown: watch::Rece
 // niczego wysłać do panelu.
 
 async fn overlay_socket(ws: WebSocketUpgrade, State(app): State<App>) -> Response {
-    ws.on_upgrade(move |socket| overlay_connection(socket, app.hub, app.shutdown))
+    let clients = app.control.clients.clone();
+    ws.on_upgrade(move |socket| async move {
+        clients.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        overlay_connection(socket, app.hub, app.shutdown).await;
+        clients.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    })
 }
 
 /// Wiadomość „wygląd overlayu” z ustawień panelu.
@@ -267,7 +277,7 @@ fn overlay_filter(json: &str) -> Option<Arc<str>> {
     match value["t"].as_str()? {
         "settings" => Some(overlay_look(&value)),
         "jarvis" => {
-            const PUBLIC: [&str; 7] = ["state", "level", "transcript", "action", "reply", "error", "reminder"];
+            const PUBLIC: [&str; 8] = ["state", "level", "transcript", "action", "reply", "error", "reminder", "vip"];
             let ev = &value["ev"];
             let kind = ev["e"].as_str()?;
             if !PUBLIC.contains(&kind) {

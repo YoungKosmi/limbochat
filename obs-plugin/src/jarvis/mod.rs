@@ -146,6 +146,8 @@ pub enum JarvisEvent {
     Status(JarvisStatus),
     /// Przypomnienie ustawione wcześniej głosem.
     Reminder { text: String },
+    /// Powitanie VIP-a (np. twórcy) — złota karta z koroną na overlayu.
+    Vip { name: String, title: String, text: String, creator: bool },
     /// Nauka „Hej Limbo”: krok 1–3, stan: listening / ok / retry / done / cancelled / error.
     Enroll { step: usize, total: usize, state: &'static str, text: String },
     /// Lista modeli z `/models` własnego dostawcy.
@@ -166,6 +168,7 @@ enum Cmd {
     Enroll(String),
     Mention { name: String, text: String },
     Rhyme { nick: String, event: String, reply: tokio::sync::oneshot::Sender<Option<String>> },
+    Ask { system: &'static str, prompt: String, reply: tokio::sync::oneshot::Sender<Option<String>> },
     Say(String),
 }
 
@@ -211,6 +214,13 @@ impl JarvisHandle {
     pub fn rhyme(&self, nick: String, event: String) -> tokio::sync::oneshot::Receiver<Option<String>> {
         let (reply, rx) = tokio::sync::oneshot::channel();
         let _ = self.tx.send(Cmd::Rhyme { nick, event, reply });
+        rx
+    }
+
+    /// Jedno pytanie do mózgu LimboAI bez narzędzi (podsumowanie streama, fakty o widzach).
+    pub fn ask(&self, system: &'static str, prompt: String) -> tokio::sync::oneshot::Receiver<Option<String>> {
+        let (reply, rx) = tokio::sync::oneshot::channel();
+        let _ = self.tx.send(Cmd::Ask { system, prompt, reply });
         rx
     }
 
@@ -337,6 +347,8 @@ pub fn spawn(
     config: JarvisConfig,
     status: Arc<Mutex<JarvisStatus>>,
     demo: bool,
+    obs: Option<crate::obs::ObsHandle>,
+    memory: Option<Arc<crate::memory::Memory>>,
 ) -> JarvisHandle {
     let (tx, mut rx) = mpsc::unbounded_channel();
     let (reminder_tx, mut reminder_rx) = mpsc::unbounded_channel();
@@ -365,7 +377,7 @@ pub fn spawn(
         voice: Voice::new(config.voice),
         status,
         brain: tokio::sync::Mutex::new(Brain {
-            executor: tools::Executor::new(helix, tools::Local { hub: Some(hub.clone()), reminders: Some(reminder_tx) }),
+            executor: tools::Executor::new(helix, tools::Local { hub: Some(hub.clone()), reminders: Some(reminder_tx), obs, memory }),
             kind: "gemini",
             history: Vec::new(),
             last: None,
@@ -494,6 +506,13 @@ pub fn spawn(
                     let shared = shared.clone();
                     tokio::spawn(async move {
                         let _ = reply.send(rhyme(&shared, &nick, &event).await);
+                    });
+                }
+                Cmd::Ask { system, prompt, reply } => {
+                    let shared = shared.clone();
+                    tokio::spawn(async move {
+                        let answer = ask_brain(&shared, system, &prompt, 1200).await;
+                        let _ = reply.send(answer);
                     });
                 }
                 Cmd::Say(text) => {
@@ -721,6 +740,9 @@ async fn respond(
         reply
     };
     shared.emit(JarvisEvent::Reply { text: reply.clone() });
+    for url in actions.iter().filter(|a| a.ok).filter_map(|a| a.url.clone()) {
+        shared.hub.clip_made(url);
+    }
     for action in actions.iter().filter(|a| a.ok && !a.text.starts_with('❔')) {
         let channel = ctx.active.as_ref().map(|c| c.login.clone()).or_else(|| ctx.me.as_ref().map(|(l, _)| l.clone()));
         shared.notice(channel, format!("🤖 LimboAI: {}", action.text), false);
@@ -905,6 +927,29 @@ Zasady:
 - użyj nicku widza (możesz go odmienić albo zdrobnić, ale nie zmieniaj liter),
 - ciepło i z humorem; bez obrażania, wulgaryzmów, polityki i aluzji erotycznych,
 - bez emoji, hashtagów, cudzysłowów i wstępu — tylko same dwa wersy w osobnych liniach.";
+
+/// Jedno pytanie do mózgu (Gemini albo własny model) bez narzędzi. `None` = brak mózgu / błąd.
+async fn ask_brain(shared: &Arc<Shared>, system: &str, prompt: &str, max_chars: usize) -> Option<String> {
+    let config = shared.config();
+    let gemini_key = secrets::load(Provider::Gemini).await;
+    let text = match resolve_mind(&config, gemini_key).await.ok()? {
+        Mind::Gemini { key, model } => tokio::time::timeout(Duration::from_secs(40), gemini::generate_text(&shared.http, &key, &model, system, prompt))
+            .await
+            .ok()?
+            .map_err(|e| tracing::warn!("LimboAI: {e:#}"))
+            .ok()?,
+        Mind::OpenAi { base, key, model } => {
+            let ep = openai::Endpoint { base: &base, key: key.as_deref(), model: &model };
+            tokio::time::timeout(Duration::from_secs(60), openai::complete(&shared.http, &ep, system, prompt))
+                .await
+                .ok()?
+                .map_err(|e| tracing::warn!("LimboAI: {e:#}"))
+                .ok()?
+        }
+    };
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.chars().take(max_chars).collect())
+}
 
 async fn rhyme(shared: &Arc<Shared>, nick: &str, event: &str) -> Option<String> {
     use std::sync::atomic::Ordering::SeqCst;
@@ -1135,6 +1180,21 @@ fn system_prompt(ctx: &tools::Context, stream: &Option<(String, String)>, pendin
     };
     let stream = stream.as_ref().map_or("(nieznane)".to_owned(), |(title, game)| format!("tytuł „{title}”, kategoria {game}"));
     let pending = pending.map_or(String::new(), |p| format!("\n- CZEKA NA POTWIERDZENIE: {p}. Jeśli użytkownik potwierdza lub odmawia — wywołaj confirm_pending."));
+    let obs = match &ctx.obs {
+        Some(o) if o.connected => format!(
+            "\n- OBS: połączony. Sceny: {}. Aktualna: {}. Stream: {}. Nagrywanie: {}.",
+            o.scenes.join(", "),
+            o.current_scene.as_deref().unwrap_or("?"),
+            if o.streaming { "trwa" } else { "nie" },
+            if o.recording { "trwa" } else { "nie" }
+        ),
+        _ => "\n- OBS: brak połączenia (sterowanie OBS niedostępne — powiedz, jak je włączyć: ⚙ → OBS).".to_owned(),
+    };
+    let memory = if ctx.memory.is_empty() {
+        String::new()
+    } else {
+        format!("\n- Co pamiętasz o osobach z czatu: {}", ctx.memory.iter().map(|(n, b)| format!("{n}: {b}")).collect::<Vec<_>>().join(" | "))
+    };
 
     format!(
         "Jesteś LimboAI — głosowy asystent streamera Twitch, wbudowany w OBS (LiMBOCHAT). \
@@ -1151,6 +1211,8 @@ Zasady:
 - Kolor panelu LiMBOCHAT → set_panel_color; kolor nicku na czacie → set_nick_color (to dwie różne rzeczy).
 - „Przypomnij mi za…” → set_reminder. „Wylosuj kogoś z czatu” → pick_random_chatter i przeczytaj zwycięzcę.
 - Łagodne upomnienie → warn_user; nalot hejtu/botów → set_shield_mode.
+- OBS: scena → obs_switch_scene (nazwę dopasuj do listy scen), mikrofon/dźwięk → obs_set_mute, pokaż/schowaj kamerkę lub inne źródło → obs_set_source_visible, nagrywanie → obs_recording, „zapisz powtórkę/to było dobre” → obs_save_replay. Start i koniec streama (obs_streaming) wymagają potwierdzenia.
+- Pamięć o widzach: „zapamiętaj, że X…” → remember_viewer; „zapomnij…” → forget_viewer; „co wiesz o X?” / „kto to X?” → viewer_info. Korzystaj z tego, co pamiętasz, ale nie zdradzaj prywatnych notatek na głos bez pytania.
 - Użytkownik woła Cię „LimboAI”, „Limbo”, „Hej Limbo” albo „Jarvis” — to imiona dla Ciebie, nie komendy.
 - Twoje odpowiedzi mogą być widoczne na streamie (overlay) — bądź kulturalny.
 - Jeśli wypowiedź nie ma sensu (błąd rozpoznawania), poproś o powtórzenie.
@@ -1160,7 +1222,7 @@ Kontekst:
 - Twój kanał (zalogowany streamer): {me} — tu zmieniasz kategorię, tytuł, robisz klipy, markery, raidy, ankiety i reklamy.
 - Kanał otwarty w panelu (moderacja czatu, wiadomości): {active}
 - Stream: {stream}
-- Osoby na czacie (ostatnio piszące): {chatters}{pending}"
+- Osoby na czacie (ostatnio piszące): {chatters}{obs}{memory}{pending}"
     )
 }
 

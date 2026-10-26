@@ -83,7 +83,7 @@ function Ensure-RepoNotEmpty($repo) {
     }
 }
 
-# Pliki projektu bez rzeczy lokalnych (kompilacja, wydania, paczki, klucze).
+# Pliki projektu bez rzeczy lokalnych i prywatnych (kompilacja, wydania, paczki, wszystkie klucze).
 function Get-SourceFiles {
     $skipDirs = @('target', 'wydania', 'LiMBOCHAT-OBS-dla-znajomego', '.git', 'node_modules')
     $files = New-Object System.Collections.Generic.List[object]
@@ -93,7 +93,7 @@ function Get-SourceFiles {
             $rel = if ($prefix) { "$prefix/$($item.Name)" } else { $item.Name }
             if ($item.PSIsContainer) {
                 if ($skipDirs -notcontains $item.Name) { & $walk $item.FullName $rel }
-            } elseif ($item.Name -notmatch '\.(key|zip|log)$' -and $item.Name -ne 'handover.json') {
+            } elseif ($item.Name -notmatch '\.(key|zip|log)$' -and $item.Name -notmatch '^(aktualizacje-.*\.txt|klucze-limboai\.json|import-keys\.json|handover\.json)$') {
                 $files.Add([pscustomobject]@{ Path = $rel; Full = $item.FullName })
             }
         }
@@ -160,4 +160,18 @@ function Publish-Source($repo, $message) {
     $topics = @{ names = @('twitch', 'twitch-chat', 'obs', 'obs-plugin', 'obs-studio', '7tv', 'rust', 'streaming', 'moderation', 'voice-assistant', 'gemini', 'overlay', 'polish') }
     Invoke-GhJson 'PUT' "repos/$repo/topics" $topics '.names | length' | Out-Null
     Say 'Opis i tematy repozytorium ustawione.' 'Green'
+}
+
+# Paczka „na komputer” (bez OBS): silnik + LiMBOCHAT.bat, który otwiera panel jako okno.
+function New-BrowserPackage($zipPath, [switch]$WithKeys) {
+    $dir = Join-Path ([IO.Path]::GetTempPath()) "LiMBOCHAT-przegladarka-$PID"
+    if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
+    New-Item -ItemType Directory -Path $dir | Out-Null
+    Copy-Item (Join-Path $Root 'target\release\limbochat-engine.exe') $dir
+    Copy-Item (Join-Path $Root 'obs-plugin\przegladarka\*') $dir
+    if ($WithKeys) {
+        & (Join-Path $Root 'target\release\limbochat-engine.exe') --export-keys (Join-Path $dir 'klucze-limboai.json') | Out-Null
+    }
+    Compress-Archive -Path (Join-Path $dir '*') -DestinationPath $zipPath -Force
+    Remove-Item $dir -Recurse -Force
 }

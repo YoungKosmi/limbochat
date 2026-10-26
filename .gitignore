@@ -4,3 +4,7 @@ LiMBOCHAT-OBS-dla-znajomego/
 LiMBOCHAT-OBS-dla-znajomego.zip
 # Klucz podpisu aktualizacji NIGDY nie trafia do repozytorium
 *.key
+aktualizacje-*.txt
+klucze-limboai.json
+import-keys.json
+LiMBOCHAT-na-komputer.zip

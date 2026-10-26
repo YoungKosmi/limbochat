@@ -22,6 +22,13 @@ if not errorlevel 1 (
   exit /b 1
 )
 
+rem Klucze LimboAI od znajomego (jesli sa w paczce) - silnik przeniesie je do sejfu Windows.
+if exist "klucze-limboai.json" (
+  if not exist "%LOCALAPPDATA%\LiMBOCHAT\engine" mkdir "%LOCALAPPDATA%\LiMBOCHAT\engine" 2> nul
+  copy /Y "klucze-limboai.json" "%LOCALAPPDATA%\LiMBOCHAT\engine\import-keys.json" > nul && del /Q "klucze-limboai.json"
+  echo  Klucze LimboAI zapisane - LimboAI zadziala bez zakladania kont.
+)
+
 set "DEST=%ProgramData%\obs-studio\plugins\limbochat\bin\64bit"
 if not exist "%DEST%" mkdir "%DEST%" 2> nul
 if not exist "%ProgramData%\obs-studio\plugins\limbochat\data" mkdir "%ProgramData%\obs-studio\plugins\limbochat\data" 2> nul

@@ -39,6 +39,10 @@ pub struct Context {
     /// Ostatnie wiadomości: (nick, treść).
     pub recent: Vec<(String, String)>,
     pub demo: bool,
+    /// Stan OBS (gdy sterowanie OBS jest włączone).
+    pub obs: Option<crate::obs::ObsStatus>,
+    /// Pamięć o osobach z czatu: (nick, krótki opis).
+    pub memory: Vec<(String, String)>,
 }
 
 impl Context {
@@ -83,6 +87,8 @@ struct DemoStream {
 pub struct Local {
     pub hub: Option<HubHandle>,
     pub reminders: Option<tokio::sync::mpsc::UnboundedSender<ReminderCmd>>,
+    pub obs: Option<crate::obs::ObsHandle>,
+    pub memory: Option<Arc<crate::memory::Memory>>,
 }
 
 #[derive(Debug)]
@@ -168,6 +174,56 @@ impl Executor {
     /// Narzędzia niezależne od Twitcha. `None` = to nie jest narzędzie lokalne.
     async fn execute_local(&mut self, ctx: &Context, name: &str, args: &Value) -> Option<Outcome> {
         let s = |key: &str| args[key].as_str().unwrap_or_default().trim().to_owned();
+        if name.starts_with("obs_") {
+            return Some(match &self.local.obs {
+                Some(obs) => run_obs(obs, name, args).await.unwrap_or_else(|e| fail(&e)),
+                None => fail("Sterowanie OBS nie jest dostępne."),
+            });
+        }
+        if matches!(name, "remember_viewer" | "forget_viewer" | "viewer_info") {
+            let Some(memory) = &self.local.memory else { return Some(fail("Pamięć o widzach jest wyłączona (⚙ → Pamięć o widzach).")) };
+            let spoken = s("user");
+            let (login, display) = match resolve_known(ctx, &spoken) {
+                Some(c) => (c.login, c.name),
+                None => match memory.find(&spoken) {
+                    Some((login, v)) => (login, v.name),
+                    None => {
+                        let login: String = spoken.trim_start_matches('@').chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').collect::<String>().to_lowercase();
+                        (login.clone(), login)
+                    }
+                },
+            };
+            if login.is_empty() {
+                return Some(fail(&format!("Nie wiem, kim jest „{spoken}”.")));
+            }
+            return Some(match name {
+                "remember_viewer" => {
+                    let fact = s("fact");
+                    if memory.remember(&login, &display, &fact, "voice") {
+                        ok(json!({ "ok": true, "user": display, "fact": fact }), Some(format!("🧠 Zapamiętano: {display} — {fact}")))
+                    } else {
+                        ok(json!({ "ok": true, "already_known": true }), None)
+                    }
+                }
+                "forget_viewer" => {
+                    let fact = s("fact");
+                    let which = if fact.is_empty() { crate::memory::Forget::All } else { crate::memory::Forget::Matching(fact) };
+                    let n = memory.forget(&login, which);
+                    ok(json!({ "ok": true, "removed": n }), Some(format!("🧠 Zapomniano ({n}) o {display}")))
+                }
+                _ => match memory.get(&login) {
+                    Some(v) => ok(
+                        json!({
+                            "user": v.name, "notes": v.notes.iter().map(|n| n.text.clone()).collect::<Vec<_>>(),
+                            "messages": v.messages, "streams": v.streams, "bits": v.bits, "sub_months": v.sub_months, "gifted": v.gifted,
+                            "first_seen": chrono::DateTime::from_timestamp_millis(v.first_seen).map(|d| d.format("%d.%m.%Y").to_string()),
+                        }),
+                        None,
+                    ),
+                    None => ok(json!({ "user": display, "known": false }), None),
+                },
+            });
+        }
         Some(match name {
             "set_panel_color" => match panel_color(&s("color")) {
                 Some((hex, label)) => {
@@ -470,7 +526,7 @@ fn fail(message: &str) -> Outcome {
 
 fn is_destructive(name: &str) -> bool {
     // Moderator dostaje pełnię władzy na czacie — przekręcony nick nie może jej dostać.
-    matches!(name, "ban_user" | "clear_chat" | "start_raid" | "run_ad" | "add_moderator")
+    matches!(name, "ban_user" | "clear_chat" | "start_raid" | "run_ad" | "add_moderator" | "obs_streaming")
 }
 
 fn describe_pending(name: &str, args: &Value) -> String {
@@ -481,6 +537,8 @@ fn describe_pending(name: &str, args: &Value) -> String {
         "start_raid" => format!("raid na {}", s("channel")),
         "run_ad" => format!("reklama {} s", args["seconds"].as_u64().unwrap_or(60)),
         "add_moderator" => format!("moderator dla {}", s("user")),
+        "obs_streaming" if s("action") == "stop" => "zakończenie streama w OBS".to_owned(),
+        "obs_streaming" => "start streama w OBS".to_owned(),
         other => other.to_owned(),
     }
 }
@@ -524,7 +582,7 @@ fn chat_color(input: &str) -> Option<String> {
 }
 
 /// Małe litery bez polskich znaków („Różowy” → „rozowy”).
-fn fold(s: &str) -> String {
+pub(crate) fn fold(s: &str) -> String {
     s.to_lowercase()
         .chars()
         .map(|c| match c {
@@ -611,6 +669,110 @@ async fn resolve_user(helix: &Helix, ctx: &Context, spoken: &str) -> Result<Chat
 
 async fn resolve_channel(helix: &Helix, ctx: &Context, spoken: &str) -> Result<Chatter, String> {
     resolve_user(helix, ctx, spoken).await
+}
+
+/// Najbliższa nazwa z listy (sceny, źródła): dokładna → zawiera → literówki.
+pub(crate) fn best_match(spoken: &str, names: &[String]) -> Option<String> {
+    let norm = |s: &str| fold(s).chars().filter(|c| c.is_alphanumeric()).collect::<String>();
+    let wanted = norm(spoken);
+    if wanted.is_empty() {
+        return None;
+    }
+    if let Some(n) = names.iter().find(|n| norm(n) == wanted) {
+        return Some(n.clone());
+    }
+    let containing: Vec<&String> = names.iter().filter(|n| norm(n).contains(&wanted) || wanted.contains(&norm(n))).collect();
+    if containing.len() == 1 {
+        return Some(containing[0].clone());
+    }
+    let mut scored: Vec<(usize, &String)> = names.iter().map(|n| (levenshtein(&wanted, &norm(n)), n)).collect();
+    scored.sort_by_key(|(d, _)| *d);
+    match scored.as_slice() {
+        [(d, n), rest @ ..] if *d <= 2.max(wanted.len() / 4) && rest.first().is_none_or(|(d2, _)| d2 > d) => Some((*n).clone()),
+        _ => None,
+    }
+}
+
+/// Polecenia OBS (obs-websocket).
+async fn run_obs(obs: &crate::obs::ObsHandle, name: &str, args: &Value) -> Result<Outcome, String> {
+    let s = |key: &str| args[key].as_str().unwrap_or_default().trim().to_owned();
+    match name {
+        "obs_switch_scene" => {
+            let list = obs.request("GetSceneList", json!({})).await?;
+            let scenes: Vec<String> = list["scenes"].as_array().map(|a| a.iter().filter_map(|x| x["sceneName"].as_str().map(str::to_owned)).collect()).unwrap_or_default();
+            let scene = best_match(&s("scene"), &scenes).ok_or_else(|| format!("Nie ma sceny „{}”. Sceny: {}.", s("scene"), scenes.join(", ")))?;
+            obs.request("SetCurrentProgramScene", json!({ "sceneName": scene })).await?;
+            Ok(ok(json!({ "ok": true, "scene": scene }), Some(format!("🎬 Scena → {scene}"))))
+        }
+        "obs_set_mute" => {
+            let inputs = obs.request("GetInputList", json!({})).await?;
+            let list = inputs["inputs"].as_array().cloned().unwrap_or_default();
+            let names: Vec<String> = list.iter().filter_map(|i| i["inputName"].as_str().map(str::to_owned)).collect();
+            let wanted = s("source");
+            let micish = ["", "mikrofon", "mic", "mikrofonu", "mikrofonik", "glos", "głos"];
+            let input = if micish.contains(&fold(&wanted).as_str()) {
+                // Mikrofon: pierwsze wejście audio (WASAPI / Pulse / CoreAudio input capture).
+                list.iter()
+                    .find(|i| i["inputKind"].as_str().is_some_and(|k| k.contains("input_capture")))
+                    .and_then(|i| i["inputName"].as_str().map(str::to_owned))
+                    .or_else(|| best_match("mic", &names))
+            } else {
+                best_match(&wanted, &names)
+            }
+            .ok_or_else(|| format!("Nie znalazłem źródła dźwięku „{wanted}”. Źródła: {}.", names.join(", ")))?;
+            let muted = match args["muted"].as_bool() {
+                Some(m) => {
+                    obs.request("SetInputMute", json!({ "inputName": input, "inputMuted": m })).await?;
+                    m
+                }
+                None => obs.request("ToggleInputMute", json!({ "inputName": input })).await?["inputMuted"].as_bool().unwrap_or(true),
+            };
+            Ok(ok(json!({ "ok": true, "source": input, "muted": muted }), Some(format!("{} {input}", if muted { "🔇 Wyciszono" } else { "🔊 Włączono" }))))
+        }
+        "obs_set_source_visible" => {
+            let current = obs.request("GetCurrentProgramScene", json!({})).await?;
+            let scene = current["currentProgramSceneName"].as_str().or_else(|| current["sceneName"].as_str()).unwrap_or_default().to_owned();
+            let items = obs.request("GetSceneItemList", json!({ "sceneName": scene })).await?;
+            let list = items["sceneItems"].as_array().cloned().unwrap_or_default();
+            let names: Vec<String> = list.iter().filter_map(|i| i["sourceName"].as_str().map(str::to_owned)).collect();
+            let wanted = s("source");
+            let alias = match fold(&wanted).as_str() {
+                "kamerka" | "kamera" | "kamere" | "kamerke" | "facecam" | "cam" => "kamer",
+                other => other,
+            }
+            .to_owned();
+            let source = best_match(&wanted, &names)
+                .or_else(|| names.iter().find(|n| fold(n).contains(&alias) || (alias == "kamer" && (fold(n).contains("cam") || fold(n).contains("video")))).cloned())
+                .ok_or_else(|| format!("Na scenie „{scene}” nie ma źródła „{wanted}”. Źródła: {}.", names.join(", ")))?;
+            let item = list.iter().find(|i| i["sourceName"].as_str() == Some(&source)).and_then(|i| i["sceneItemId"].as_i64()).unwrap_or_default();
+            let visible = args["visible"].as_bool().unwrap_or(true);
+            obs.request("SetSceneItemEnabled", json!({ "sceneName": scene, "sceneItemId": item, "sceneItemEnabled": visible })).await?;
+            Ok(ok(json!({ "ok": true, "source": source, "visible": visible }), Some(format!("{} {source}", if visible { "👁 Pokazano" } else { "🙈 Schowano" }))))
+        }
+        "obs_recording" => {
+            let (request, label) = match s("action").as_str() {
+                "stop" => ("StopRecord", "⏹ Nagrywanie zatrzymane"),
+                "pause" => ("PauseRecord", "⏸ Nagrywanie wstrzymane"),
+                "resume" => ("ResumeRecord", "⏺ Nagrywanie wznowione"),
+                _ => ("StartRecord", "⏺ Nagrywanie rozpoczęte"),
+            };
+            obs.request(request, json!({})).await?;
+            Ok(ok(json!({ "ok": true }), Some(label.into())))
+        }
+        "obs_streaming" => {
+            let stop = s("action") == "stop";
+            obs.request(if stop { "StopStream" } else { "StartStream" }, json!({})).await?;
+            Ok(ok(json!({ "ok": true }), Some(if stop { "⏹ Stream zakończony" } else { "🔴 Stream wystartował" }.into())))
+        }
+        "obs_save_replay" => {
+            obs.request("SaveReplayBuffer", json!({})).await?;
+            Ok(ok(json!({ "ok": true }), Some("💾 Powtórka zapisana".into())))
+        }
+        _ => {
+            let st = obs.status();
+            Ok(ok(json!({ "connected": st.connected, "scenes": st.scenes, "current_scene": st.current_scene, "streaming": st.streaming, "recording": st.recording }), None))
+        }
+    }
 }
 
 fn levenshtein(a: &str, b: &str) -> usize {
@@ -715,6 +877,24 @@ pub fn declarations() -> Value {
           "parameters": { "type": "object", "properties": { "seconds": { "type": "integer", "description": "Za ile sekund (max 6 h)" }, "text": { "type": "string", "description": "O czym przypomnieć" } }, "required": ["seconds", "text"] } },
         { "name": "cancel_reminders", "description": "Anuluje wszystkie przypomnienia." },
         { "name": "pick_random_chatter", "description": "Losuje osobę spośród ostatnio piszących na czacie (np. do giveawaya)." },
+        { "name": "obs_switch_scene", "description": "Przełącza scenę w OBS (np. Start, Gra, Przerwa, Koniec).",
+          "parameters": { "type": "object", "properties": { "scene": { "type": "string", "description": "Nazwa sceny z listy scen OBS" } }, "required": ["scene"] } },
+        { "name": "obs_set_mute", "description": "Wycisza albo włącza źródło dźwięku w OBS. Bez nazwy = mikrofon. Bez muted = przełącza.",
+          "parameters": { "type": "object", "properties": { "source": { "type": "string", "description": "Nazwa źródła dźwięku, np. Mikrofon, Dźwięk pulpitu, Muzyka" }, "muted": { "type": "boolean" } } } },
+        { "name": "obs_set_source_visible", "description": "Pokazuje albo chowa źródło na aktualnej scenie OBS (np. kamerkę).",
+          "parameters": { "type": "object", "properties": { "source": { "type": "string", "description": "Nazwa źródła, np. Kamerka" }, "visible": { "type": "boolean" } }, "required": ["source", "visible"] } },
+        { "name": "obs_recording", "description": "Nagrywanie w OBS: start, stop, pause, resume.",
+          "parameters": { "type": "object", "properties": { "action": { "type": "string", "enum": ["start", "stop", "pause", "resume"] } }, "required": ["action"] } },
+        { "name": "obs_streaming", "description": "Rozpoczyna albo kończy stream w OBS (wymaga potwierdzenia).",
+          "parameters": { "type": "object", "properties": { "action": { "type": "string", "enum": ["start", "stop"] } }, "required": ["action"] } },
+        { "name": "obs_save_replay", "description": "Zapisuje powtórkę z bufora powtórek OBS (ostatnie sekundy)." },
+        { "name": "obs_status", "description": "Stan OBS: sceny, aktualna scena, czy trwa stream i nagrywanie." },
+        { "name": "remember_viewer", "description": "Zapamiętuje trwały fakt o widzu (np. lubi koty, gra w CS-a).",
+          "parameters": { "type": "object", "properties": { "user": user, "fact": { "type": "string", "description": "Krótki fakt w 3. osobie, bez nicku, np. 'lubi koty'" } }, "required": ["user", "fact"] } },
+        { "name": "forget_viewer", "description": "Zapomina fakt o widzu (albo wszystko, gdy bez faktu).",
+          "parameters": { "type": "object", "properties": { "user": user, "fact": { "type": "string" } }, "required": ["user"] } },
+        { "name": "viewer_info", "description": "Co LimboAI pamięta o widzu: notatki, od kiedy ogląda, ile streamów, wsparcie.",
+          "parameters": { "type": "object", "properties": { "user": user }, "required": ["user"] } },
         { "name": "confirm_pending", "description": "Potwierdza (true) albo anuluje (false) akcję czekającą na potwierdzenie.",
           "parameters": { "type": "object", "properties": { "confirmed": { "type": "boolean" } }, "required": ["confirmed"] } }
     ])
@@ -816,7 +996,7 @@ mod tests {
     #[tokio::test]
     async fn reminders_are_sent_to_jarvis() {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-        let mut ex = Executor::new(None, Local { hub: None, reminders: Some(tx) });
+        let mut ex = Executor::new(None, Local { reminders: Some(tx), ..Default::default() });
         ex.run(&ctx(), "set_reminder", &json!({ "seconds": 600, "text": "napij się wody" })).await;
         match rx.recv().await.unwrap() {
             ReminderCmd::Add { after, text } => assert_eq!((after.as_secs(), text.as_str()), (600, "napij się wody")),

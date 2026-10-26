@@ -95,10 +95,75 @@
   .reply { font-size: 18px; font-weight: 600; line-height: 1.35; max-width: 470px; text-shadow: 0 1px 8px rgba(0, 0, 0, .4); }
   .caret { display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -2px; background: rgb(var(--a-hi)); animation: blink .8s steps(2) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
+
+  /* ── Powitanie VIP / twórcy ── */
+  .stage.vip-on .card { opacity: 0 !important; transform: scale(.9); }
+  .vip {
+    position: absolute; display: flex; align-items: center; gap: 18px; padding: 16px 28px 16px 18px; border-radius: 24px;
+    background: linear-gradient(135deg, rgba(40, 26, 6, .94), rgba(22, 14, 30, .92));
+    border: 1.5px solid rgba(255, 214, 102, .7);
+    box-shadow: 0 0 0 1px rgba(255, 240, 200, .15) inset, 0 18px 60px rgba(0, 0, 0, .55), 0 0 70px rgba(255, 190, 60, .45);
+    zoom: var(--scale); opacity: 0; transform: translateY(var(--from, 30px)) scale(.7) rotate(-2deg); pointer-events: none;
+    transition: opacity .5s, transform .7s cubic-bezier(.2, 1.5, .35, 1);
+    max-width: calc((100vw - 56px) / var(--scale)); overflow: visible;
+  }
+  .stage.top-left .vip, .stage.top-right .vip, .stage.top-center .vip { --from: -30px; }
+  .vip.on { opacity: 1; transform: none; }
+  .vip.out { opacity: 0; transform: translateY(10px) scale(.95); transition: opacity .6s, transform .6s; }
+  .vip::before { /* złoty połysk przelatujący po karcie */
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(110deg, transparent 30%, rgba(255, 236, 170, .35) 50%, transparent 70%) -200% 0 / 250% 100% no-repeat;
+  }
+  .vip.on::before { animation: vip-sweep 2.2s .5s ease-in-out 2; }
+  @keyframes vip-sweep { to { background-position: 250% 0; } }
+  .crown-wrap { position: relative; width: 74px; height: 74px; flex: none; display: grid; place-items: center; }
+  .rays { position: absolute; inset: -34px; border-radius: 50%;
+    background: repeating-conic-gradient(from 0deg, rgba(255, 210, 90, .38) 0 8deg, transparent 8deg 24deg);
+    -webkit-mask: radial-gradient(circle, #000 25%, transparent 70%); mask: radial-gradient(circle, #000 25%, transparent 70%);
+    animation: spin 9s linear infinite; }
+  .crown { position: relative; width: 62px; height: 62px; filter: drop-shadow(0 0 14px rgba(255, 200, 70, .9)); }
+  .vip.on .crown { animation: crown-drop .9s cubic-bezier(.2, 1.6, .35, 1) both, crown-bob 2.4s 1s ease-in-out infinite; }
+  @keyframes crown-drop { 0% { transform: translateY(-80px) rotate(-30deg) scale(.5); opacity: 0; } 100% { transform: none; opacity: 1; } }
+  @keyframes crown-bob { 50% { transform: translateY(-4px) rotate(4deg); } }
+  .vip-body { display: grid; gap: 4px; min-width: 0; }
+  .vip-tag { font-size: 12px; font-weight: 600; letter-spacing: .24em; text-transform: uppercase; color: rgba(255, 220, 140, .85); }
+  .vip-title {
+    font-family: "Outfit", sans-serif; font-weight: 700; font-size: 32px; line-height: 1.05; letter-spacing: .01em; text-transform: uppercase;
+    background: linear-gradient(90deg, #fff3c4, #ffc93c 30%, #fff7d6 50%, #ffb62e 70%, #fff3c4) 0 0 / 200% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 2px 10px rgba(255, 180, 40, .45));
+    animation: gold-flow 2.5s linear infinite;
+  }
+  @keyframes gold-flow { to { background-position: -200% 0; } }
+  .vip-text { font-size: 19px; font-weight: 600; color: #fff; text-shadow: 0 1px 8px rgba(0, 0, 0, .5); min-height: 1.3em; }
+  #fx { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  #fx i { position: absolute; top: -14px; width: 8px; height: 13px; border-radius: 2px; opacity: 0;
+    animation: drop var(--d) var(--delay) cubic-bezier(.3, .2, .6, 1) forwards; }
+  #fx b { position: absolute; width: 6px; height: 6px; border-radius: 50%; opacity: 0;
+    background: radial-gradient(circle, #fff, #ffd24a 60%, transparent 70%); box-shadow: 0 0 10px #ffcc33;
+    animation: spark var(--d) var(--delay) ease-out forwards; }
+  @keyframes drop { 0% { opacity: 1; transform: translateY(0) rotate(0); } 100% { opacity: 0; transform: translateY(330px) rotate(var(--r)) translateX(var(--x)); } }
+  @keyframes spark { 0% { opacity: 1; transform: translate(0, 0) scale(1); } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(.2); } }
 </style>
 </head>
 <body>
+<div id="fx"></div>
 <div class="stage bottom-left" id="stage">
+  <div class="vip" id="vip">
+    <div class="crown-wrap">
+      <span class="rays"></span>
+      <svg class="crown" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff2b0"/><stop offset=".5" stop-color="#ffc83a"/><stop offset="1" stop-color="#e08a00"/></linearGradient></defs>
+        <path d="M8 22l12 10 12-18 12 18 12-10-5 28H13z" fill="url(#g)" stroke="#fff3c4" stroke-width="1.5" stroke-linejoin="round"/>
+        <rect x="13" y="50" width="38" height="6" rx="2" fill="url(#g)"/>
+        <circle cx="8" cy="20" r="3.5" fill="#fff3c4"/><circle cx="32" cy="12" r="4" fill="#fff3c4"/><circle cx="56" cy="20" r="3.5" fill="#fff3c4"/>
+        <circle cx="32" cy="38" r="4" fill="#ff5c8a"/><circle cx="21" cy="40" r="2.6" fill="#6cc6ff"/><circle cx="43" cy="40" r="2.6" fill="#5ee1a1"/></svg>
+    </div>
+    <div class="vip-body">
+      <div class="vip-tag" id="vip-tag">LimboAI wita</div>
+      <div class="vip-title" id="vip-title"></div>
+      <div class="vip-text" id="vip-text"></div>
+    </div>
+  </div>
   <div class="card" id="card" data-state="idle">
     <div class="orb" id="orb"><i class="ring"></i><i class="ring"></i><i class="ring"></i><i class="arc"></i><i class="arc arc2"></i><i class="core"></i></div>
     <div class="body">
@@ -191,12 +256,66 @@ function onJarvis(ev) {
     }
     case "reply": show(); typeReply(ev.text); if (state === "idle") hideIn(readingTime(ev.text)); return;
     case "error": if (state === "idle") hideIn(400); return;
+    case "vip": return showVip(ev);
     case "reminder":
       setState("reminder");
       $("cmd").textContent = ""; $("chips").replaceChildren();
       show(); typeReply(ev.text); hideIn(readingTime(ev.text));
       return;
   }
+}
+
+let vipTimer = 0;
+function showVip(ev) {
+  clearTimeout(vipTimer);
+  const vip = $("vip");
+  $("vip-tag").textContent = ev.creator ? "Twórca LiMBOCHAT · LimboAI wita" : "Gość specjalny · LimboAI wita";
+  $("vip-title").textContent = ev.title;
+  $("vip-text").textContent = "";
+  vip.classList.remove("out");
+  $("stage").classList.add("vip-on");
+  void vip.offsetWidth;
+  vip.classList.add("on");
+  // Tekst pisany na żywo + złote konfetti i iskry.
+  let i = 0;
+  const t = setInterval(() => {
+    i = Math.min(ev.text.length, i + 1);
+    $("vip-text").textContent = ev.text.slice(0, i);
+    if (i >= ev.text.length) clearInterval(t);
+  }, 38);
+  confetti();
+  vipTimer = setTimeout(() => {
+    vip.classList.add("out");
+    setTimeout(() => { vip.classList.remove("on", "out"); $("stage").classList.remove("vip-on"); }, 650);
+  }, Math.max(7000, ev.text.length * 70));
+}
+
+function confetti() {
+  const fx = $("fx");
+  const colors = ["#ffd24a", "#ffb62e", "#fff3c4", "#ff8fb3", "#b48cff", "#6cc6ff"];
+  const box = $("vip").getBoundingClientRect();
+  for (let n = 0; n < 70; n++) {
+    const c = document.createElement("i");
+    c.style.left = `${Math.random() * 100}%`;
+    c.style.background = colors[n % colors.length];
+    c.style.setProperty("--d", `${1.6 + Math.random() * 1.8}s`);
+    c.style.setProperty("--delay", `${Math.random() * 1.2}s`);
+    c.style.setProperty("--r", `${Math.random() * 900 - 450}deg`);
+    c.style.setProperty("--x", `${Math.random() * 80 - 40}px`);
+    fx.append(c);
+  }
+  for (let n = 0; n < 26; n++) {
+    const s = document.createElement("b");
+    const a = Math.random() * Math.PI * 2, d = 60 + Math.random() * 120;
+    s.style.left = `${box.left + 55}px`;
+    s.style.top = `${box.top + box.height / 2}px`;
+    s.style.setProperty("--dx", `${Math.cos(a) * d}px`);
+    s.style.setProperty("--dy", `${Math.sin(a) * d}px`);
+    s.style.setProperty("--d", `${0.8 + Math.random() * 0.8}s`);
+    s.style.setProperty("--delay", `${0.35 + Math.random() * 0.3}s`);
+    fx.append(s);
+  }
+  setTimeout(() => fx.replaceChildren(), 4500);
 }
 
 function connect() {
@@ -232,7 +351,13 @@ async function demoLoop() {
   }
 }
 
-if (DEMO) {
+if (params.has("vip")) {
+  applyLook(null, { position: params.get("pos") || "bottom-left" });
+  document.body.classList.toggle("preview", params.has("bg"));
+  const run = () => showVip({ name: "kosmiaczek", title: "Szef Kosmi na czacie", text: "Witam Szefa Kosmiego!", creator: true });
+  run();
+  setInterval(run, 9000);
+} else if (DEMO) {
   document.body.classList.toggle("preview", params.has("bg"));
   applyLook(params.get("accent") ? `#${params.get("accent")}` : null, {
     position: params.get("pos") || "bottom-left",

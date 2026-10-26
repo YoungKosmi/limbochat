@@ -25,7 +25,8 @@ PIERWSZE KROKI
 • Kliknij „+” i wpisz nazwę kanału, żeby otworzyć czat.
 
 LimboAI (asystent głosowy)
-• Ikona zębatki → sekcja LimboAI → wklej SWOJE klucze:
+• Jeśli w paczce był plik klucze-limboai.json, LimboAI działa od razu — nic nie wklejasz.
+• W przeciwnym razie: ikona zębatki → sekcja LimboAI → wklej SWOJE klucze:
   – Groq (rozpoznawanie mowy, darmowy): https://console.groq.com/keys
   – Gemini (mózg): https://aistudio.google.com/apikey — albo wybierz „Własny model”
     (OpenAI, OpenRouter, Groq, a za darmo na komputerze: Ollama / LM Studio).

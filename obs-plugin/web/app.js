@@ -115,6 +115,11 @@ function handle(msg) {
     case "settings": state.settings = msg; return applySettings();
     case "jarvis": return onJarvis(msg.ev);
     case "update": state.update = msg; return renderUpdate();
+    case "obs": state.obs = msg; return renderObs();
+    case "summary": return showSummary(msg);
+    case "summaries": return renderSummaryList(msg.list);
+    case "changelog": return showChangelog(msg.entries, false);
+    case "memory": return onMemory(msg);
   }
 }
 
@@ -145,6 +150,11 @@ function applySnapshot(s) {
   renderAll();
   renderUpdate();
   announceUpdate();
+  state.obs = s.obs;
+  state.memoryCount = s.memory_count;
+  renderObs();
+  renderMemorySettings();
+  if (s.changelog && s.changelog.length) showChangelog(s.changelog, true);
 }
 
 // ── Aktualizacje ──
@@ -515,6 +525,7 @@ const ALERT_ICONS = {
   rocket: '<svg viewBox="0 0 24 24"><path d="M14 3c4 0 7 3 7 7l-7 7-4-4-4-4z" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.8" fill="rgba(0,0,0,.4)"/><path d="M6 13l-3 1 2 2zm5 5-1 3-2-2zM7 17c-1 1-3 3-4 4 1-1 3-3 4-4z" fill="currentColor"/></svg>',
   heart: '<svg viewBox="0 0 24 24"><path d="M12 21s-8-5.2-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.8-8 11-8 11z" fill="currentColor"/></svg>',
   points: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="3"/><path d="M12 7v5h5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>',
+  crown: '<svg viewBox="0 0 24 24"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z" fill="currentColor"/><rect x="5" y="19.5" width="14" height="2" rx="1" fill="currentColor"/></svg>',
   wave: '<svg viewBox="0 0 24 24"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11m0-6.5a1.5 1.5 0 0 1 3 0V11m0-5a1.5 1.5 0 0 1 3 0v8a7 7 0 0 1-12.5 4.3L2.6 15a1.5 1.5 0 0 1 2.3-1.9L8 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
 };
 
@@ -529,6 +540,7 @@ function alertLook(a) {
     case "raid": return { icon: "rocket", color: "#ff8a3d", big: a.amount >= 10, label: "Raid" };
     case "follow": return { icon: "heart", color: "#ff5c8a", big: false, label: "Follow" };
     case "redemption": return { icon: "points", color: "#31d0c6", big: a.amount >= 10000, label: "Nagroda" };
+    case "vip": return { icon: "crown", color: "#ffc83a", big: true, label: (a.target || "").startsWith("Szef Kosmi") ? "Twórca LiMBOCHAT" : "Gość specjalny" };
     default: return { icon: "wave", color: "#b9a6f7", big: false, label: "Nowy" };
   }
 }
@@ -562,6 +574,7 @@ function alertTitle(m, a) {
     case "raid": add(b(name), " wpada z raidem i ", count(a.amount), ` ${a.amount === 1 ? "widzem" : "widzami"}!`); break;
     case "follow": add(b(name), " obserwuje kanał!"); break;
     case "redemption": add(b(name), " odbiera nagrodę ", b(a.target || "nagroda")); break;
+    case "vip": add("👑 ", b(a.target || name), "!"); break;
     default: add(b(name), " jest tu pierwszy raz — przywitaj się!");
   }
   return f;
@@ -625,7 +638,7 @@ function renderAlert(ch, m, live) {
   }
   const extra = document.createElement("div");
   extra.className = "alert-extra";
-  if (a.extra) extra.textContent = a.kind === "redemption" ? `„${a.extra}”` : `Dla: ${a.extra}`;
+  if (a.extra) extra.textContent = a.kind === "redemption" || a.kind === "vip" ? `„${a.extra}”` : `Dla: ${a.extra}`;
   body.append(extra);
 
   if (m.segs.length) {
@@ -764,7 +777,29 @@ function playAlertSound(big) {
 
 // ── Ustawienia alertów i obrazków ──
 const ALERT_SWITCHES = { "al-enabled": "enabled", "al-rhymes": "rhymes", "al-voice": "rhymes_voice", "al-chat": "rhymes_chat", "al-follows": "follows", "al-redemptions": "redemptions", "al-new": "new_chatters", "al-sound": "sound" };
+function renderGreetings() {
+  const g = (state.settings && state.settings.greetings) || {};
+  $("gr-creator").checked = g.creator !== false;
+  $("gr-voice").checked = g.voice !== false;
+  $("gr-overlay").checked = g.overlay !== false;
+  if (document.activeElement !== $("gr-custom")) $("gr-custom").value = (g.custom || []).map(([n, t]) => `${n}: ${t}`).join("\n");
+}
+function saveGreetings() {
+  const custom = $("gr-custom").value
+    .split("\n")
+    .map((l) => l.split(":"))
+    .filter((p) => p.length >= 2)
+    .map(([n, ...t]) => [n.trim().replace(/^@/, "").toLowerCase(), t.join(":").trim()])
+    .filter(([n, t]) => n && t);
+  const g = { creator: $("gr-creator").checked, voice: $("gr-voice").checked, overlay: $("gr-overlay").checked, custom };
+  state.settings.greetings = g;
+  send({ c: "greetings", ...g });
+}
+for (const id of ["gr-creator", "gr-voice", "gr-overlay"]) $(id).addEventListener("change", saveGreetings);
+$("gr-custom").addEventListener("change", saveGreetings);
+
 function renderAlertSettings() {
+  renderGreetings();
   const a = (state.settings && state.settings.alerts) || {};
   for (const [id, key] of Object.entries(ALERT_SWITCHES)) $(id).checked = !!a[key];
   for (const id of ["al-voice", "al-chat"]) $(id).closest("label").classList.toggle("dim", !a.rhymes);
@@ -910,7 +945,17 @@ function openUserMenu(event, ch, m, row) {
   id.className = "tag";
   id.textContent = `ID ${m.user_id}`;
   head.append(name, id);
-  menu.append(head, sep());
+  menu.append(head);
+  // Pamięć LimboAI o tej osobie (dociąga się z silnika).
+  const mem = document.createElement("div");
+  mem.className = "mem";
+  mem.id = "mem-box";
+  mem.dataset.login = m.login;
+  mem.dataset.name = m.name;
+  mem.textContent = "🧠 …";
+  mem.addEventListener("click", (e) => e.stopPropagation());
+  menu.append(mem, sep());
+  send({ c: "memory_get", login: m.login });
 
   const item = (icon, label, onClick, cls = "") => {
     const b = document.createElement("button");
@@ -954,10 +999,425 @@ function openUserMenu(event, ch, m, row) {
   item("link", "Otwórz profil", () => send({ c: "open", url: `https://www.twitch.tv/${m.login}` }));
 
   menu.hidden = false;
+  menu._at = { x: event.clientX, y: event.clientY };
+  placeMenu();
+}
+
+function placeMenu() {
+  const menu = $("menu");
   const { innerWidth: w, innerHeight: h } = window;
   const rect = menu.getBoundingClientRect();
-  menu.style.left = `${Math.min(event.clientX, w - rect.width - 8)}px`;
-  menu.style.top = `${Math.min(event.clientY, h - rect.height - 8)}px`;
+  menu.style.left = `${Math.max(8, Math.min(menu._at.x, w - rect.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(menu._at.y, h - rect.height - 8))}px`;
+}
+
+// ── Pamięć o widzach ──
+function fmtDate(ms) {
+  return ms ? new Date(ms).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" }) : "";
+}
+
+function onMemory(msg) {
+  state.memoryCount = msg.count;
+  renderMemorySettings();
+  const box = $("mem-box");
+  if (!box || $("menu").hidden || box.dataset.login !== msg.login) return;
+  box.replaceChildren();
+  const v = msg.viewer;
+  const title = document.createElement("div");
+  title.className = "mem-title";
+  title.textContent = "🧠 Pamięć LimboAI";
+  box.append(title);
+  if (v && v.messages) {
+    const stats = document.createElement("div");
+    stats.className = "mem-stats";
+    const parts = [`${v.messages.toLocaleString("pl-PL")} wiad.`];
+    if (v.streams) parts.push(`${v.streams} ${plural(v.streams, "stream", "streamy", "streamów")}`);
+    if (v.first_seen) parts.push(`od ${fmtDate(v.first_seen)}`);
+    if (v.bits) parts.push(`💎 ${v.bits.toLocaleString("pl-PL")}`);
+    if (v.sub_months) parts.push(`⭐ ${v.sub_months} mies.`);
+    if (v.gifted) parts.push(`🎁 ${v.gifted}`);
+    stats.textContent = parts.join(" · ");
+    box.append(stats);
+  }
+  const list = document.createElement("div");
+  list.className = "mem-notes";
+  (v ? v.notes : []).forEach((n, i) => {
+    const row = document.createElement("div");
+    row.className = "mem-note";
+    const t = document.createElement("span");
+    t.textContent = n.text;
+    t.title = `${n.source === "ai" ? "LimboAI z czatu" : n.source === "voice" ? "głosem" : "dopisane w panelu"} · ${fmtDate(n.at)}`;
+    const x = document.createElement("button");
+    x.textContent = "×";
+    x.title = "Zapomnij";
+    x.addEventListener("click", () => send({ c: "memory_forget", login: msg.login, index: i }));
+    if (n.source === "ai") row.classList.add("ai");
+    row.append(t, x);
+    list.append(row);
+  });
+  if (!v || !v.notes.length) {
+    const empty = document.createElement("div");
+    empty.className = "mem-empty";
+    empty.textContent = "Nic jeszcze nie wiem o tej osobie.";
+    list.append(empty);
+  }
+  const input = document.createElement("input");
+  input.className = "mem-input";
+  input.placeholder = "Dopisz, np. „lubi koty” ↵";
+  input.maxLength = 140;
+  input.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter" && input.value.trim()) {
+      send({ c: "memory_add", login: msg.login, name: box.dataset.name, text: input.value.trim() });
+      input.value = "";
+    }
+    if (e.key === "Escape") closePopovers();
+  });
+  box.append(list, input);
+  placeMenu();
+}
+
+function renderMemorySettings() {
+  const s = state.settings || {};
+  const mem = s.memory || {};
+  $("mem-enabled").checked = mem.enabled !== false;
+  $("mem-learn").checked = mem.learn !== false;
+  $("mem-learn").closest("label").classList.toggle("dim", mem.enabled === false);
+  const n = state.memoryCount || 0;
+  $("mem-count").textContent = `Pamiętam ${n} ${plural(n, "osobę", "osoby", "osób")}.`;
+  const sum = s.summary || {};
+  $("sum-enabled").checked = sum.enabled !== false;
+  $("sum-voice").checked = sum.voice !== false;
+}
+
+// ── OBS ──
+function renderObs() {
+  const o = state.obs || {};
+  const cfg = (state.settings && state.settings.obs) || { enabled: true, port: 4455 };
+  $("obs-enabled").checked = cfg.enabled !== false;
+  if (document.activeElement !== $("obs-port")) $("obs-port").value = cfg.port || 4455;
+  const st = $("obs-status");
+  st.className = `obs-status ${o.connected ? "on" : cfg.enabled === false ? "" : "err"}`;
+  if (cfg.enabled === false) st.textContent = "Wyłączone.";
+  else if (o.connected) {
+    st.textContent = `Połączono z OBS${o.version ? ` (WebSocket ${o.version})` : ""} · scena: ${o.current_scene || "?"}${o.streaming ? " · 🔴 na żywo" : ""}${o.recording ? " · ⏺ nagrywanie" : ""}`;
+  } else st.textContent = o.error || "Łączenie z OBS…";
+  const badge = $("obs-pass-state");
+  badge.textContent = o.has_password ? "✓ zapisane" : "brak";
+  badge.className = `key-state ${o.has_password ? "ok" : "missing"}`;
+  $("obs-pass-remove").hidden = !o.has_password;
+}
+function saveObs() {
+  const cfg = { enabled: $("obs-enabled").checked, port: Number($("obs-port").value) || 4455 };
+  state.settings.obs = cfg;
+  send({ c: "obs_settings", ...cfg });
+  renderObs();
+}
+$("obs-enabled").addEventListener("change", saveObs);
+$("obs-port").addEventListener("change", saveObs);
+$("obs-pass-save").addEventListener("click", () => {
+  const v = $("obs-pass").value.trim();
+  if (!v) return $("obs-pass").focus();
+  send({ c: "obs_password", password: v });
+  $("obs-pass").value = "";
+});
+$("obs-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") $("obs-pass-save").click(); });
+$("obs-pass-remove").addEventListener("click", (e) => { e.preventDefault(); send({ c: "obs_password", password: null }); });
+for (const id of ["mem-enabled", "mem-learn"]) {
+  $(id).addEventListener("change", () => {
+    const c = { enabled: $("mem-enabled").checked, learn: $("mem-learn").checked };
+    state.settings.memory = c;
+    send({ c: "memory_settings", ...c });
+    renderMemorySettings();
+  });
+}
+$("mem-clear").addEventListener("click", () => {
+  const b = $("mem-clear");
+  if (!b.dataset.sure) {
+    b.dataset.sure = "1";
+    b.textContent = "Na pewno? Kliknij jeszcze raz";
+    setTimeout(() => { delete b.dataset.sure; b.textContent = "Wyczyść pamięć"; }, 4000);
+    return;
+  }
+  delete b.dataset.sure;
+  b.textContent = "Wyczyść pamięć";
+  send({ c: "memory_clear" });
+});
+for (const id of ["sum-enabled", "sum-voice"]) {
+  $(id).addEventListener("change", () => {
+    const c = { enabled: $("sum-enabled").checked, voice: $("sum-voice").checked };
+    state.settings.summary = c;
+    send({ c: "summary_settings", ...c });
+  });
+}
+$("sum-now").addEventListener("click", () => { $("settings").hidden = true; send({ c: "summary_now" }); });
+$("sum-history").addEventListener("click", () => send({ c: "summary_history" }));
+$("up-changelog").addEventListener("click", () => send({ c: "changelog" }));
+
+// ── Okno (podsumowanie streama, co nowego) ──
+function openModal(build, kind) {
+  const card = $("modal-card");
+  card.replaceChildren();
+  card.dataset.kind = kind;
+  build(card);
+  $("modal").hidden = false;
+  card.scrollTop = 0;
+}
+function closeModal() { $("modal").hidden = true; }
+$("modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("modal").hidden) closeModal(); });
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function richText(s) {
+  // **pogrubienie** z CHANGELOG.md, reszta jako tekst.
+  const span = el("span");
+  s.split(/(\*\*[^*]+\*\*)/).forEach((part) => {
+    if (/^\*\*[^*]+\*\*$/.test(part)) span.append(el("b", "", part.slice(2, -2)));
+    else if (part) span.append(document.createTextNode(part));
+  });
+  return span;
+}
+
+function showChangelog(entries, afterUpdate) {
+  if (!entries || !entries.length) return;
+  if (afterUpdate) {
+    const key = `limbochat-changelog-${state.version}`;
+    try {
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, "1");
+    } catch { /* bez pamięci przeglądarki pokażemy raz na sesję */ }
+  }
+  openModal((card) => {
+    const head = el("div", "modal-head");
+    head.append(el("div", "modal-title", afterUpdate ? `✨ Zaktualizowano do ${state.version}` : "✨ Co nowego"));
+    const x = el("button", "modal-x", "×");
+    x.addEventListener("click", closeModal);
+    head.append(x);
+    card.append(head);
+    if (afterUpdate) card.append(el("p", "hint", "Oto co się zmieniło — OBS nie musiał się restartować."));
+    for (const e of entries) {
+      const sec = el("div", "cl-section");
+      sec.append(el("div", "cl-version", e.version === "Następna wersja" ? "NAJNOWSZE" : `WERSJA ${e.version}`));
+      const ul = el("ul", "cl-list");
+      for (const item of e.items) {
+        const li = el("li");
+        li.append(richText(item));
+        ul.append(li);
+      }
+      sec.append(ul);
+      card.append(sec);
+    }
+    const ok = el("button", "btn-accent", "Super!");
+    ok.addEventListener("click", closeModal);
+    card.append(ok);
+  }, "changelog");
+}
+
+function fmtMinutes(m) {
+  const h = Math.floor(m / 60), r = m % 60;
+  return h ? `${h} h ${r} min` : `${r} min`;
+}
+
+function sparkline(points, { area = true, color = "var(--k)" } = {}) {
+  const w = 320, h = 70, pad = 4;
+  const max = Math.max(1, ...points);
+  const step = points.length > 1 ? (w - pad * 2) / (points.length - 1) : 0;
+  const xy = points.map((v, i) => [pad + i * step, h - pad - (v / max) * (h - pad * 2)]);
+  const line = xy.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.setAttribute("class", "spark");
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.style.setProperty("--k", color);
+  if (area && xy.length > 1) {
+    const a = document.createElementNS(ns, "path");
+    a.setAttribute("d", `${line} L${xy[xy.length - 1][0]},${h} L${xy[0][0]},${h} Z`);
+    a.setAttribute("class", "spark-area");
+    svg.append(a);
+  }
+  const p = document.createElementNS(ns, "path");
+  p.setAttribute("d", line);
+  p.setAttribute("class", "spark-line");
+  svg.append(p);
+  return svg;
+}
+
+function bars(values) {
+  const box = el("div", "bars");
+  const max = Math.max(1, ...values);
+  for (const v of values) {
+    const b = el("i");
+    b.style.height = `${Math.max(3, (v / max) * 100)}%`;
+    b.title = `${v} wiadomości`;
+    box.append(b);
+  }
+  return box;
+}
+
+function showSummary(s) {
+  const card = $("modal-card");
+  // Dopisany tekst LimboAI do już otwartego podsumowania — tylko odśwież tekst.
+  if (!$("modal").hidden && card.dataset.kind === "summary" && card.dataset.id === String(s.id)) {
+    renderSummaryText(card.querySelector(".sum-ai"), s, true);
+    if (s.title && card.querySelector(".sum-sub")) card.querySelector(".sum-sub").textContent = summarySubtitle(s);
+    return;
+  }
+  openModal((card) => {
+    card.dataset.id = String(s.id);
+    const head = el("div", "modal-head");
+    const title = el("div", "modal-title", "📊 Podsumowanie streama");
+    const x = el("button", "modal-x", "×");
+    x.addEventListener("click", closeModal);
+    head.append(title, x);
+    card.append(head, el("div", "sum-sub", summarySubtitle(s)));
+
+    const tiles = el("div", "sum-tiles");
+    const tile = (icon, label, value, extra) => {
+      const t = el("div", "sum-tile");
+      t.append(el("div", "sum-icon", icon), el("div", "sum-value", value), el("div", "sum-label", label));
+      if (extra) t.append(el("div", "sum-extra", extra));
+      tiles.append(t);
+    };
+    tile("⏱", "czas streama", fmtMinutes(s.minutes));
+    tile("💬", "wiadomości", s.messages.toLocaleString("pl-PL"), `${s.chatters} ${plural(s.chatters, "osoba", "osoby", "osób")} na czacie`);
+    if (s.peak_viewers) tile("👀", "widzów max", s.peak_viewers.toLocaleString("pl-PL"), `średnio ${s.avg_viewers}`);
+    if (s.new_chatters) tile("👋", plural(s.new_chatters, "nowa osoba", "nowe osoby", "nowych osób"), s.new_chatters);
+    if (s.bits) tile("💎", plural(s.bits, "bits", "bitsy", "bitsów"), s.bits.toLocaleString("pl-PL"));
+    if (s.subs || s.resubs) tile("⭐", plural(s.subs + s.resubs, "sub", "suby", "subów"), s.subs + s.resubs, s.resubs ? `w tym ${s.resubs} ${plural(s.resubs, "resub", "resuby", "resubów")}` : "");
+    if (s.gifts) tile("🎁", plural(s.gifts, "gift", "gifty", "giftów"), s.gifts);
+    if (s.follows) tile("❤️", "follow", s.follows);
+    if (s.redemptions) tile("🎯", plural(s.redemptions, "nagroda", "nagrody", "nagród"), s.redemptions);
+    if (s.raids.length) tile("🚀", plural(s.raids.length, "raid", "raidy", "raidów"), s.raids.length, s.raids.map(([n, v]) => `${n} (${v})`).join(", "));
+    card.append(tiles);
+
+    if (s.viewers.length > 1) {
+      const sec = el("div", "sum-section");
+      sec.append(el("div", "sum-h", "Widzowie"), sparkline(s.viewers.map(([, v]) => v), { color: "#9be36d" }));
+      card.append(sec);
+    }
+    if (s.messages_per_5min.some((v) => v)) {
+      const sec = el("div", "sum-section");
+      sec.append(el("div", "sum-h", "Aktywność czatu (co 5 minut)"), bars(s.messages_per_5min));
+      card.append(sec);
+    }
+    if (s.top_chatters.length) {
+      const sec = el("div", "sum-section");
+      sec.append(el("div", "sum-h", "Najaktywniejsi na czacie"));
+      const max = s.top_chatters[0][1] || 1;
+      s.top_chatters.forEach(([name, count], i) => {
+        const row = el("div", "sum-rank");
+        row.append(el("span", "medal", ["🥇", "🥈", "🥉", "4.", "5."][i]), el("span", "rank-name", name));
+        const bar = el("span", "rank-bar");
+        bar.style.setProperty("--w", `${(count / max) * 100}%`);
+        row.append(bar, el("span", "rank-count", count));
+        sec.append(row);
+      });
+      card.append(sec);
+    }
+    if (s.top_supporters.length || s.top_emotes.length) {
+      const sec = el("div", "sum-section sum-two");
+      if (s.top_supporters.length) {
+        const a = el("div");
+        a.append(el("div", "sum-h", "Największe wsparcie"));
+        for (const [n] of s.top_supporters) a.append(el("div", "sum-chip", `💜 ${n}`));
+        sec.append(a);
+      }
+      if (s.top_emotes.length) {
+        const e = el("div");
+        e.append(el("div", "sum-h", "Ulubione emotki"));
+        for (const [n, c] of s.top_emotes) e.append(el("div", "sum-chip", `${n} × ${c}`));
+        sec.append(e);
+      }
+      card.append(sec);
+    }
+    const ai = el("div", "sum-ai");
+    card.append(ai);
+    renderSummaryText(ai, s, false);
+    if (s.clips.length) {
+      const sec = el("div", "sum-section");
+      sec.append(el("div", "sum-h", "Klipy"));
+      for (const url of s.clips) {
+        const a = el("a", "sum-clip", url);
+        a.href = url;
+        a.addEventListener("click", (e) => { e.preventDefault(); send({ c: "open", url }); });
+        sec.append(a);
+      }
+      card.append(sec);
+    }
+    const actions = el("div", "row-inline sum-actions");
+    const copyBtn = el("button", "btn-ghost small", "Kopiuj tekst");
+    copyBtn.addEventListener("click", () => copy(summaryAsText(s)));
+    const ok = el("button", "btn-accent small", "Zamknij");
+    ok.addEventListener("click", closeModal);
+    actions.append(copyBtn, ok);
+    card.append(actions);
+  }, "summary");
+  card.dataset.id = String(s.id);
+  card._summary = s;
+}
+
+function summarySubtitle(s) {
+  const d = new Date(s.started_at);
+  const when = `${d.toLocaleDateString("pl-PL", { weekday: "long", day: "numeric", month: "long" })}, ${d.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}`;
+  return [when, s.category, s.title && `„${s.title}”`].filter(Boolean).join(" · ");
+}
+
+function renderSummaryText(box, s, animate) {
+  if (!box) return;
+  $("modal-card")._summary = s;
+  box.classList.toggle("pending", !!s.ai_pending);
+  if (s.ai_pending) {
+    box.textContent = "LimboAI pisze podsumowanie…";
+    return;
+  }
+  if (!s.ai_text) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  if (!animate || document.body.classList.contains("no-anim")) {
+    box.textContent = s.ai_text;
+    return;
+  }
+  let i = 0;
+  box.textContent = "";
+  const t = setInterval(() => {
+    i = Math.min(s.ai_text.length, i + 3);
+    box.textContent = s.ai_text.slice(0, i);
+    if (i >= s.ai_text.length) clearInterval(t);
+  }, 20);
+}
+
+function summaryAsText(s) {
+  const lines = [`Podsumowanie streama — ${summarySubtitle(s)}`, `Czas: ${fmtMinutes(s.minutes)}, wiadomości: ${s.messages}, osób na czacie: ${s.chatters}`];
+  if (s.peak_viewers) lines.push(`Widzowie: max ${s.peak_viewers}, średnio ${s.avg_viewers}`);
+  if (s.top_chatters.length) lines.push(`Najaktywniejsi: ${s.top_chatters.map(([n, c]) => `${n} (${c})`).join(", ")}`);
+  const ai = ($("modal-card")._summary || s).ai_text;
+  if (ai) lines.push("", ai);
+  return lines.join("\n");
+}
+
+function renderSummaryList(list) {
+  const box = $("sum-list");
+  box.hidden = false;
+  box.replaceChildren();
+  if (!list.length) {
+    box.append(el("div", "hint", "Brak zapisanych podsumowań."));
+    return;
+  }
+  for (const s of list) {
+    const b = el("button", "sum-item");
+    b.append(el("span", "", new Date(s.started_at).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" })), el("span", "", `${fmtMinutes(s.minutes)} · ${s.messages} wiad.${s.peak_viewers ? ` · ${s.peak_viewers} widzów` : ""}`));
+    b.addEventListener("click", () => { $("settings").hidden = true; showSummary(s); });
+    box.append(b);
+  }
 }
 
 function sep() {
@@ -1358,6 +1818,8 @@ function applySettings() {
   renderOverlay();
   renderUpdate();
   renderAlertSettings();
+  renderObs();
+  renderMemorySettings();
 }
 
 function saveSettings() {
@@ -1526,6 +1988,7 @@ function onJarvis(ev) {
     case "reminder": return showReminder(ev.text);
     case "enroll": return onEnroll(ev);
     case "models": return onModels(ev);
+    case "vip": return; // karta przychodzi jako alert na czacie
   }
 }
 

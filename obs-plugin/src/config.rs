@@ -25,6 +25,61 @@ pub struct Config {
     pub alerts: AlertsConfig,
     /// Obrazki z linków kappa.lol na czacie: `all`, `trusted` (sub/VIP/mod) albo `off`.
     pub media_previews: String,
+    /// Powitania VIP-ów (twórca LiMBOCHAT i własna lista).
+    pub greetings: GreetingsConfig,
+    /// Sterowanie OBS (obs-websocket).
+    pub obs: crate::obs::ObsConfig,
+    /// Pamięć LimboAI o widzach.
+    pub memory: MemoryConfig,
+    /// Podsumowanie streama po zakończeniu.
+    pub summary: SummaryConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct MemoryConfig {
+    pub enabled: bool,
+    /// LimboAI sam wyciąga fakty z czatu (co 10 minut, bez danych wrażliwych).
+    pub learn: bool,
+}
+
+impl Default for MemoryConfig {
+    fn default() -> Self {
+        Self { enabled: true, learn: true }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct SummaryConfig {
+    pub enabled: bool,
+    /// LimboAI mówi krótkie podsumowanie na głos.
+    pub voice: bool,
+}
+
+impl Default for SummaryConfig {
+    fn default() -> Self {
+        Self { enabled: true, voice: true }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct GreetingsConfig {
+    /// Witaj twórcę LiMBOCHAT (kosmiaczek), gdy przywita się na czacie.
+    pub creator: bool,
+    /// LimboAI mówi powitanie na głos.
+    pub voice: bool,
+    /// Efekt na overlayu.
+    pub overlay: bool,
+    /// Własni VIP-owie: (login, tekst powitania).
+    pub custom: Vec<(String, String)>,
+}
+
+impl Default for GreetingsConfig {
+    fn default() -> Self {
+        Self { creator: true, voice: true, overlay: true, custom: Vec::new() }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -106,6 +161,10 @@ impl Default for Config {
             updates: "auto".to_owned(),
             alerts: AlertsConfig::default(),
             media_previews: "all".to_owned(),
+            greetings: GreetingsConfig::default(),
+            obs: crate::obs::ObsConfig::default(),
+            memory: MemoryConfig::default(),
+            summary: SummaryConfig::default(),
         }
     }
 }

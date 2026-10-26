@@ -31,6 +31,10 @@ use crate::{
     parser::{self, ParsedMessage},
     protocol::{AlertDto, AuthDto, ChannelDto, ClientMsg, EmoteDto, MessageDto, ServerMsg, Snapshot, badges_dto},
     update::{UpdateStatus, UpdaterHandle},
+    changelog,
+    memory::{Forget, Memory},
+    obs::{self, ObsEvent, ObsHandle},
+    summary::{self, Stats, Summary},
 };
 
 /// Ile ostatnich wiadomości na kanał trzymamy dla przeładowanych paneli.
@@ -54,6 +58,14 @@ pub enum Request {
     UpdateGate { reply: oneshot::Sender<(bool, bool)> },
     /// Nowy stan aktualizacji — do wszystkich paneli.
     UpdateStatus(UpdateStatus),
+    /// LimboAI zrobił klip (do podsumowania streama).
+    ClipMade(String),
+    /// Podsumowanie słowami / tytuł streama dopisane po zakończeniu.
+    SummaryDone { id: u64, text: Option<String>, title: Option<String>, category: Option<String> },
+    /// Fakty o widzach wyciągnięte przez LimboAI z czatu.
+    MemoryFacts(Vec<(String, String)>),
+    /// Stan streama z Twitcha (co 2 min): Some(widzowie) = na żywo.
+    TwitchLive { viewers: Option<u64>, started_at: Option<chrono::DateTime<chrono::Utc>> },
     /// Rymowanka do alertu gotowa (albo `None` — nie udało się).
     AlertRhyme { channel: String, id: String, rhyme: Option<String> },
 }
@@ -112,6 +124,10 @@ impl HubHandle {
             return (false, false);
         }
         rx.await.unwrap_or((false, false))
+    }
+
+    pub fn clip_made(&self, url: String) {
+        let _ = self.requests.send(Request::ClipMade(url));
     }
 
     pub fn update_status(&self, status: UpdateStatus) {
@@ -178,6 +194,21 @@ pub struct Hub {
     eventsub: Option<tokio::task::JoinHandle<()>>,
     /// Gift-bomby w toku: (kanał, darczyńca, ile jeszcze pojedynczych gifów zwinąć, od kiedy, id alertu).
     gift_waves: Vec<(String, String, u64, Instant, String)>,
+    memory: Arc<Memory>,
+    obs: ObsHandle,
+    /// Statystyki trwającego streama.
+    stats: Option<Stats>,
+    last_summary: Option<Summary>,
+    /// Czy OBS zgłosił, że stream trwa (wtedy koniec streama wykrywa OBS, a nie Twitch).
+    obs_live: bool,
+    /// Ostatni znany stan z Twitcha (do wykrycia końca streama bez OBS).
+    twitch_live: Option<bool>,
+    /// Czat do nauki pamięci: (login, nick, tekst).
+    learn_buffer: Vec<(String, String, String)>,
+    /// Kiedy ostatnio zakończył się stream (Twitch jeszcze chwilę pokazuje „na żywo”).
+    stream_ended: Option<Instant>,
+    /// Ostatnie powitanie danego VIP-a (żeby nie witać przy każdym „siema”).
+    greeted: std::collections::HashMap<String, Instant>,
     demo_alert: usize,
 }
 
@@ -198,6 +229,12 @@ impl Hub {
         };
         let config = config::load();
         let jarvis_status = Arc::new(std::sync::Mutex::new(JarvisStatus::default()));
+        let memory = Arc::new(Memory::load());
+        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let obs = {
+            let _guard = rt.enter();
+            obs::spawn(config.obs.clone(), obs_tx)
+        };
         let jarvis = jarvis::spawn(
             rt,
             helix.clone(),
@@ -206,6 +243,8 @@ impl Hub {
             config.jarvis.clone(),
             jarvis_status.clone(),
             demo_mode,
+            Some(obs.clone()),
+            Some(memory.clone()),
         );
 
         let mut hub = Hub {
@@ -228,6 +267,15 @@ impl Hub {
             me: HubHandle { requests: requests.clone() },
             eventsub: None,
             gift_waves: Vec::new(),
+            greeted: std::collections::HashMap::new(),
+            memory,
+            obs,
+            stats: None,
+            last_summary: None,
+            obs_live: false,
+            twitch_live: None,
+            learn_buffer: Vec::new(),
+            stream_ended: None,
             demo_alert: 0,
         };
 
@@ -256,14 +304,33 @@ impl Hub {
         rt.spawn(async move {
             let _keep_sender = ui_tx;
             let mut demo_tick = tokio::time::interval(Duration::from_millis(1400));
+            let mut minute = tokio::time::interval(Duration::from_secs(60));
+            minute.tick().await;
+            let mut minutes = 0u64;
+            if hub.demo.is_some() {
+                // Demo: „stream” trwa od startu, żeby dało się obejrzeć podsumowanie.
+                hub.stats = Some(crate::demo::stream_stats(chrono::Utc::now() - chrono::Duration::minutes(97)));
+            }
             loop {
                 tokio::select! {
                     Some(event) = ui_rx.recv() => hub.on_event(event),
                     Some(request) = request_rx.recv() => hub.on_request(request),
+                    Some(event) = obs_rx.recv() => hub.on_obs(event),
                     _ = demo_tick.tick(), if hub.demo.is_some() => hub.demo_message(),
+                    _ = minute.tick() => {
+                        minutes += 1;
+                        hub.memory.save_if_dirty();
+                        if minutes % 2 == 0 {
+                            hub.poll_twitch_live();
+                        }
+                        if minutes % 10 == 0 {
+                            hub.learn_from_chat();
+                        }
+                    }
                     _ = shutdown.changed() => break,
                 }
             }
+            hub.memory.save_if_dirty();
             if let Some(task) = hub.eventsub.take() {
                 task.abort();
             }
@@ -320,6 +387,15 @@ impl Hub {
             jarvis: self.jarvis_status.lock().unwrap_or_else(|e| e.into_inner()).clone(),
             version: crate::version().to_owned(),
             update: self.updater.as_ref().map(UpdaterHandle::status).unwrap_or_default(),
+            obs: self.obs.status(),
+            changelog: self
+                .updater
+                .as_ref()
+                .and_then(|u| u.status().updated_from)
+                .map(|from| changelog::since(Some(&from)))
+                .unwrap_or_default(),
+            summary: self.last_summary.clone(),
+            memory_count: self.memory.len(),
         }
     }
 
@@ -350,9 +426,15 @@ impl Hub {
             me,
             active: active.and_then(|c| c.channel_ref()),
             can_moderate_active: active.is_some_and(|c| c.can_moderate),
-            chatters,
+            memory: if self.config.memory.enabled {
+                chatters.iter().take(25).filter_map(|c| Some((c.name.clone(), self.memory.brief(&c.login)?))).collect()
+            } else {
+                Vec::new()
+            },
             recent,
             demo: self.demo.is_some(),
+            obs: self.config.obs.enabled.then(|| self.obs.status()),
+            chatters,
         }
     }
 
@@ -454,6 +536,11 @@ impl Hub {
                 j.mention(msg.sender_name.clone(), msg.raw_text.clone());
             }
         }
+        // Kandydat na powitanie VIP-a (sprawdzane po wyświetleniu wiadomości).
+        let login = msg.sender_login.to_lowercase();
+        let vip = ((login == CREATOR && self.config.greetings.creator) || self.config.greetings.custom.iter().any(|(n, _)| *n == login))
+            .then(|| msg.clone());
+        self.track_message(&msg);
         let Some(ch) = self.channel_mut(&msg.channel_login) else { return };
         ch.history.push_back(msg);
         if ch.history.len() > HISTORY {
@@ -461,6 +548,9 @@ impl Hub {
         }
         while ch.history.len() + ch.carried.len() > HISTORY && ch.carried.pop_front().is_some() {}
         self.broadcast(&ServerMsg::Message { m: dto });
+        if let Some(msg) = vip {
+            self.vip_greeting(&msg, false);
+        }
     }
 
     /// Po załadowaniu emotek 7TV uzupełniamy je w historii i odsyłamy ją
@@ -520,6 +610,34 @@ impl Hub {
             }
             Request::UpdateStatus(status) => self.broadcast(&ServerMsg::Update(status)),
             Request::AlertRhyme { channel, id, rhyme } => self.on_rhyme(&channel, &id, rhyme),
+            Request::ClipMade(url) => {
+                if let Some(st) = &mut self.stats {
+                    st.on_clip(&url);
+                }
+            }
+            Request::SummaryDone { id, text, title, category } => {
+                let Some(sum) = self.last_summary.as_mut().filter(|s| s.id == id) else { return };
+                sum.ai_text = text;
+                sum.ai_pending = false;
+                sum.title = sum.title.take().or(title);
+                sum.category = sum.category.take().or(category);
+                let sum = sum.clone();
+                summary::save(&sum);
+                self.broadcast(&ServerMsg::Summary(sum));
+            }
+            Request::MemoryFacts(facts) => {
+                let mut added = 0;
+                for (login, fact) in facts {
+                    let name = self.memory.get(&login).map(|v| v.name).filter(|n| !n.is_empty()).unwrap_or_else(|| login.clone());
+                    if self.memory.remember(&login, &name, &fact, "ai") {
+                        added += 1;
+                    }
+                }
+                if added > 0 {
+                    tracing::info!("pamięć: LimboAI zapamiętał {added} nowych faktów z czatu");
+                }
+            }
+            Request::TwitchLive { viewers, started_at } => self.on_twitch_live(viewers, started_at),
             Request::JarvisContext { reply } => {
                 let _ = reply.send(self.jarvis_context());
             }
@@ -660,6 +778,72 @@ impl Hub {
                 self.save_config();
                 self.broadcast(&ServerMsg::Settings(self.config.clone()));
             }
+            ClientMsg::ObsSettings(c) => {
+                self.config.obs = c.clone();
+                self.save_config();
+                self.obs.configure(c);
+                self.broadcast(&ServerMsg::Settings(self.config.clone()));
+            }
+            ClientMsg::ObsPassword { password } => {
+                let obs = self.obs.clone();
+                tokio::spawn(async move {
+                    let password = password.filter(|p| !p.trim().is_empty());
+                    if let Err(e) = jarvis::secrets::store(jarvis::secrets::Provider::Obs, password).await {
+                        tracing::warn!("nie udało się zapisać hasła OBS: {e:#}");
+                    }
+                    obs.reconnect();
+                });
+            }
+            ClientMsg::MemorySettings(c) => {
+                self.config.memory = c;
+                self.save_config();
+                self.broadcast(&ServerMsg::Settings(self.config.clone()));
+            }
+            ClientMsg::MemoryGet { login } => self.reply_memory(conn, &login),
+            ClientMsg::MemoryAdd { login, name, text } => {
+                self.memory.remember(&login, &name, &text, "panel");
+                self.reply_memory(conn, &login);
+            }
+            ClientMsg::MemoryForget { login, index } => {
+                self.memory.forget(&login, Forget::Index(index));
+                self.reply_memory(conn, &login);
+            }
+            ClientMsg::MemoryClear => {
+                self.memory.clear();
+                self.memory.save_if_dirty();
+                self.reply_memory(conn, "");
+            }
+            ClientMsg::SummarySettings(c) => {
+                self.config.summary = c;
+                self.save_config();
+                self.broadcast(&ServerMsg::Settings(self.config.clone()));
+            }
+            ClientMsg::SummaryNow => self.finish_stream(false, true),
+            ClientMsg::SummaryHistory => Self::reply(conn, &ServerMsg::Summaries { list: summary::history() }),
+            ClientMsg::Changelog => Self::reply(conn, &ServerMsg::Changelog { entries: changelog::recent() }),
+            ClientMsg::Greetings(mut g) => {
+                g.custom = g
+                    .custom
+                    .into_iter()
+                    .map(|(n, t)| (n.trim().trim_start_matches('@').to_lowercase(), t.trim().chars().take(200).collect::<String>()))
+                    .filter(|(n, t)| !n.is_empty() && !t.is_empty() && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+                    .take(50)
+                    .collect();
+                self.config.greetings = g;
+                self.save_config();
+                self.broadcast(&ServerMsg::Settings(self.config.clone()));
+            }
+            ClientMsg::AlertTest { kind } if kind == "vip" => {
+                let channel = self.config.active.clone().or_else(|| self.channels.first().map(|c| c.login.clone()));
+                if let Some(channel) = channel {
+                    let map = self.emote_map(None);
+                    let mut msg = demo::echo(&channel, "siema wszystkim o/", &map);
+                    msg.sender_login = CREATOR.into();
+                    msg.sender_name = "kosmiaczek".into();
+                    msg.id = format!("vip-test-{}", chrono::Utc::now().timestamp_millis());
+                    self.vip_greeting(&msg, true);
+                }
+            }
             ClientMsg::AlertTest { kind } => {
                 let channel = self
                     .config
@@ -788,6 +972,11 @@ impl Hub {
         };
         let now = Instant::now();
         self.gift_waves.retain(|w| now.duration_since(w.3) < Duration::from_secs(90) && w.2 > 0);
+        if !test {
+            let in_wave = matches!(alert.kind, AlertKind::GiftSub { .. })
+                && self.gift_waves.iter().any(|w| w.0 == alert.channel_login && w.1 == sender && w.2 > 0);
+            self.track_alert(&alert, in_wave);
+        }
 
         // Pojedyncze gifty z gift-bomby dopisujemy do karty bomby zamiast nowych kart.
         if let AlertKind::GiftSub { recipient, .. } = &alert.kind {
@@ -858,6 +1047,11 @@ impl Hub {
 
         if dto.rhyme_pending {
             if let (Some(jarvis), Some(event)) = (&self.jarvis, rhyme_event(&alert)) {
+                // Pamięć o widzu → rymowanka „o nim”.
+                let event = match self.config.memory.enabled.then(|| self.memory.brief(&alert.user_login)).flatten() {
+                    Some(brief) => format!("{event}\nCo LimboAI wie o widzu (możesz nawiązać): {brief}"),
+                    None => event,
+                };
                 let reply = jarvis.rhyme(alert.user_name.clone(), event);
                 let hub = self.me.clone();
                 let id = alert.id.clone();
@@ -896,6 +1090,267 @@ impl Hub {
                 self.command(Command::SendMessage { channel, text: line.chars().take(480).collect() });
             }
         }
+    }
+
+    // ── Pamięć o widzach i statystyki streama ─────────────────────────
+
+    fn reply_memory(&self, conn: &Outbox, login: &str) {
+        let viewer = if login.is_empty() { None } else { self.memory.get(login) };
+        Self::reply(conn, &ServerMsg::Memory { login: login.to_owned(), viewer, count: self.memory.len() });
+    }
+
+    fn track_message(&mut self, msg: &ParsedMessage) {
+        let stream_id = self.stats.as_ref().filter(|s| s.channel == msg.channel_login).map_or(0, |s| s.id);
+        if self.config.memory.enabled {
+            self.memory.on_message(&msg.sender_login, &msg.sender_name, stream_id);
+            if self.config.memory.learn {
+                self.learn_buffer.push((msg.sender_login.to_lowercase(), msg.sender_name.clone(), msg.raw_text.chars().take(200).collect()));
+                if self.learn_buffer.len() > 400 {
+                    self.learn_buffer.drain(..100);
+                }
+            }
+        }
+        if let Some(st) = self.stats.as_mut().filter(|s| s.channel == msg.channel_login) {
+            let emotes: Vec<String> = msg
+                .segments
+                .iter()
+                .filter_map(|s| match s {
+                    parser::Segment::Emote(e) => Some(e.base.name.to_string()),
+                    _ => None,
+                })
+                .collect();
+            st.on_message(&msg.sender_login, &msg.sender_name, &msg.raw_text, &emotes, msg.timestamp);
+        }
+    }
+
+    fn track_alert(&mut self, alert: &ChatAlert, in_wave: bool) {
+        let (login, name) = (alert.user_login.as_str(), alert.user_name.as_str());
+        if self.config.memory.enabled {
+            match &alert.kind {
+                AlertKind::Bits { amount } => self.memory.on_support(login, name, *amount, None, 0),
+                AlertKind::Sub { months, .. } => self.memory.on_support(login, name, 0, Some(*months), 0),
+                AlertKind::GiftSub { anonymous: false, .. } if !in_wave => self.memory.on_support(login, name, 0, None, 1),
+                AlertKind::MassGift { count, anonymous: false, .. } => self.memory.on_support(login, name, 0, None, *count),
+                _ => {}
+            }
+        }
+        let Some(st) = self.stats.as_mut().filter(|s| s.channel == alert.channel_login) else { return };
+        match &alert.kind {
+            AlertKind::Bits { amount } => st.on_bits(login, name, *amount),
+            AlertKind::Sub { resub, .. } => st.on_sub(login, name, *resub),
+            AlertKind::GiftSub { anonymous, .. } if !in_wave => st.on_gifts(if *anonymous { "" } else { login }, name, 1),
+            AlertKind::MassGift { count, anonymous, .. } => st.on_gifts(if *anonymous { "" } else { login }, name, *count),
+            AlertKind::Raid { viewers, .. } => st.on_raid(name, *viewers),
+            AlertKind::Follow => st.on_follow(),
+            AlertKind::Redemption { .. } => st.on_redemption(),
+            AlertKind::NewChatter => st.on_new_chatter(),
+            _ => {}
+        }
+        if let Some(m) = &alert.message {
+            let emotes: Vec<String> = m.segments.iter().filter_map(|s| match s {
+                parser::Segment::Emote(e) => Some(e.base.name.to_string()),
+                _ => None,
+            }).collect();
+            st.on_message(&m.sender_login, &m.sender_name, &m.raw_text, &emotes, m.timestamp);
+        }
+    }
+
+    /// Co 10 minut: LimboAI wyciąga z czatu trwałe fakty o widzach.
+    fn learn_from_chat(&mut self) {
+        let buffer = std::mem::take(&mut self.learn_buffer);
+        let (Some(jarvis), true) = (&self.jarvis, self.config.memory.enabled && self.config.memory.learn) else { return };
+        let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for (login, _, _) in &buffer {
+            *counts.entry(login.as_str()).or_default() += 1;
+        }
+        let allowed: std::collections::HashSet<String> = counts.iter().filter(|(_, n)| **n >= 3).map(|(l, _)| (*l).to_owned()).collect();
+        let lines: Vec<String> = buffer.iter().filter(|(l, _, _)| allowed.contains(l)).map(|(l, _, t)| format!("{l}: {t}")).collect();
+        if lines.len() < 8 {
+            return;
+        }
+        let prompt = lines.iter().rev().take(150).rev().cloned().collect::<Vec<_>>().join("\n");
+        let reply = jarvis.ask(crate::memory::LEARN_SYSTEM, prompt);
+        let hub = self.me.clone();
+        tokio::spawn(async move {
+            let Some(text) = reply.await.ok().flatten() else { return };
+            let facts: Vec<(String, String)> = crate::memory::parse_facts(&text).into_iter().filter(|(l, _)| allowed.contains(l)).collect();
+            if !facts.is_empty() {
+                let _ = hub.requests.send(Request::MemoryFacts(facts));
+            }
+        });
+    }
+
+    fn on_obs(&mut self, event: ObsEvent) {
+        match event {
+            ObsEvent::Status(status) => self.broadcast(&ServerMsg::Obs(status)),
+            ObsEvent::StreamStarted { seconds } => {
+                self.obs_live = true;
+                if self.stats.is_none() {
+                    self.start_stream(chrono::Utc::now() - chrono::Duration::seconds(seconds as i64));
+                }
+            }
+            ObsEvent::StreamStopped => {
+                self.obs_live = false;
+                self.finish_stream(true, false);
+            }
+        }
+    }
+
+    fn start_stream(&mut self, started_at: chrono::DateTime<chrono::Utc>) {
+        let channel = match &self.auth {
+            AuthState::LoggedIn { login, .. } => login.clone(),
+            _ if self.demo.is_some() => "demo".into(),
+            _ => return,
+        };
+        tracing::info!("stream wystartował — zbieram statystyki do podsumowania (#{channel})");
+        self.stats = Some(Stats::start(&channel, started_at));
+        self.stream_ended = None;
+    }
+
+    /// Co 2 minuty: widzowie z Twitcha (wykres) i — bez OBS — wykrycie końca streama.
+    fn poll_twitch_live(&mut self) {
+        if self.demo.is_some() {
+            let n = 30 + (chrono::Utc::now().timestamp() % 60) as u64;
+            if let Some(st) = &mut self.stats {
+                st.on_viewers(n, chrono::Utc::now());
+            }
+            return;
+        }
+        let (AuthState::LoggedIn { user_id, .. }, Some(helix)) = (&self.auth, &self.helix) else { return };
+        let (helix, id, hub) = (helix.clone(), user_id.clone(), self.me.clone());
+        tokio::spawn(async move {
+            let Ok(info) = helix.live_stream(&id).await else { return };
+            let started_at = info.as_ref().and_then(|i| chrono::DateTime::parse_from_rfc3339(&i.started_at).ok()).map(|d| d.with_timezone(&chrono::Utc));
+            let _ = hub.requests.send(Request::TwitchLive { viewers: info.map(|i| i.viewer_count), started_at });
+        });
+    }
+
+    fn on_twitch_live(&mut self, viewers: Option<u64>, started_at: Option<chrono::DateTime<chrono::Utc>>) {
+        match viewers {
+            Some(count) => {
+                let recently_ended = self.stream_ended.is_some_and(|t| t.elapsed() < Duration::from_secs(15 * 60));
+                if self.stats.is_none() && !recently_ended {
+                    self.start_stream(started_at.unwrap_or_else(chrono::Utc::now));
+                }
+                if let Some(st) = &mut self.stats {
+                    st.on_viewers(count, chrono::Utc::now());
+                }
+                self.twitch_live = Some(true);
+            }
+            None => {
+                // Bez OBS: Twitch pokazuje koniec streama.
+                if self.twitch_live == Some(true) && !self.obs_live {
+                    self.finish_stream(true, false);
+                }
+                self.twitch_live = Some(false);
+            }
+        }
+    }
+
+    /// Podsumowanie: `end` = stream się skończył (statystyki zamykamy), `manual` = przycisk w panelu.
+    fn finish_stream(&mut self, end: bool, manual: bool) {
+        if end && !self.config.summary.enabled {
+            self.stats = None;
+            self.stream_ended = Some(Instant::now());
+            return;
+        }
+        let Some(stats) = (if end { self.stats.take() } else { self.stats.as_ref().map(|s| s.snapshot()) }) else {
+            if manual {
+                self.notice(None, "📊 Nie trwa żaden stream — podsumowanie pojawi się samo po kliknięciu „Zakończ stream” w OBS.", false);
+            }
+            return;
+        };
+        if end {
+            self.stream_ended = Some(Instant::now());
+        }
+        let mut sum = stats.finish(chrono::Utc::now());
+        sum.ai_pending = self.jarvis.is_some();
+        self.last_summary = Some(sum.clone());
+        summary::save(&sum);
+        self.broadcast(&ServerMsg::Summary(sum.clone()));
+        if end && self.config.summary.voice {
+            if let Some(j) = &self.jarvis {
+                j.say(sum.spoken());
+            }
+        }
+        // Tytuł/kategoria i podsumowanie słowami — w tle.
+        let sample = stats.sample();
+        let helix = self.helix.clone();
+        let own_id = match &self.auth {
+            AuthState::LoggedIn { user_id, .. } => Some(user_id.clone()),
+            _ => None,
+        };
+        let demo = self.demo.is_some();
+        let jarvis = self.jarvis.clone();
+        let hub = self.me.clone();
+        tokio::spawn(async move {
+            let (title, category) = match (helix, own_id) {
+                (Some(h), Some(id)) => match h.channel_info(&id).await {
+                    Ok(Some(info)) => (Some(info.title), Some(info.game_name)),
+                    _ => (None, None),
+                },
+                _ if demo => (Some("Wieczorne granie z czatem".to_owned()), Some("Just Chatting".to_owned())),
+                _ => (None, None),
+            };
+            let mut with_meta = sum.clone();
+            with_meta.title = title.clone();
+            with_meta.category = category.clone();
+            let mut text = match jarvis {
+                Some(j) => j.ask(summary::SUMMARY_SYSTEM, with_meta.prompt(&sample)).await.ok().flatten(),
+                None => None,
+            };
+            if text.is_none() && demo {
+                text = Some(demo_summary_text(&with_meta));
+            }
+            let _ = hub.requests.send(Request::SummaryDone { id: sum.id, text, title, category });
+        });
+    }
+
+    /// Powitanie VIP-a: twórca LiMBOCHAT albo ktoś z własnej listy pisze „siema”, „hej”, „dzień dobry”…
+    /// LimboAI mówi powitanie, na czacie pojawia się złota karta, na overlayu efekt.
+    fn vip_greeting(&mut self, msg: &ParsedMessage, test: bool) -> bool {
+        let cfg = self.config.greetings.clone();
+        let login = msg.sender_login.to_lowercase();
+        let (title, text, creator) = if login == CREATOR && cfg.creator {
+            let i = (chrono::Utc::now().timestamp_millis() as usize) % CREATOR_GREETINGS.len();
+            ("Szef Kosmi na czacie".to_owned(), CREATOR_GREETINGS[i].to_owned(), true)
+        } else if let Some((_, text)) = cfg.custom.iter().find(|(n, _)| *n == login) {
+            (format!("{} na czacie", msg.sender_name), text.clone(), false)
+        } else {
+            return false;
+        };
+        if !test && !is_greeting(&msg.raw_text) {
+            return false;
+        }
+        // Raz na 30 minut na osobę — zwykłe „siema” co chwilę nie uruchamia efektu.
+        let now = Instant::now();
+        if !test && self.greeted.get(&login).is_some_and(|t| now.duration_since(*t) < Duration::from_secs(30 * 60)) {
+            return false;
+        }
+        self.greeted.insert(login, now);
+
+        let alert = ChatAlert {
+            id: format!("vip-{}", msg.id),
+            channel_login: msg.channel_login.clone(),
+            user_id: msg.sender_id.clone(),
+            user_login: msg.sender_login.clone(),
+            user_name: msg.sender_name.clone(),
+            color: msg.color,
+            kind: AlertKind::Vip { title: title.clone(), greeting: text.clone() },
+            message: None,
+            timestamp: msg.timestamp,
+        };
+        self.on_alert(alert, test);
+        if cfg.voice {
+            if let Some(j) = &self.jarvis {
+                j.say(text.clone());
+            }
+        }
+        if cfg.overlay {
+            let ev = jarvis::JarvisEvent::Vip { name: msg.sender_name.clone(), title, text, creator };
+            self.broadcast(&ServerMsg::Jarvis { ev });
+        }
+        true
     }
 
     /// (Re)start nasłuchu follow / nagród (EventSub) dla zalogowanego streamera.
@@ -1008,6 +1463,60 @@ fn mentions(text: &str, sender: &str, me: &str) -> bool {
             .any(|w| w.eq_ignore_ascii_case(me))
 }
 
+fn demo_summary_text(s: &Summary) -> String {
+    let top = s.top_chatters.first().map_or("czat", |(n, _)| n.as_str());
+    format!(
+        "Co to był za wieczór! Przez {} minut czat nie zwalniał ani na chwilę — {} wiadomości i mnóstwo KEKW. \
+Najgłośniej było od {top}, który chyba nie odkleił się od klawiatury. Dzięki wszystkim za wsparcie, \
+do zobaczenia na następnym streamie!",
+        s.minutes, s.messages
+    )
+}
+
+/// Login twórcy LiMBOCHAT na Twitchu.
+const CREATOR: &str = "kosmiaczek";
+
+const CREATOR_GREETINGS: [&str; 5] = [
+    "Witam Szefa Kosmiego!",
+    "Uwaga, uwaga! Na czacie pojawił się Szef Kosmi. Witamy serdecznie!",
+    "Szef Kosmi na pokładzie! Kłaniam się nisko.",
+    "Ooo, sam Szef Kosmi! Witam w imieniu całego czatu!",
+    "Dzień dobry, Szefie Kosmi! Wszystko działa, jak należy.",
+];
+
+/// Czy wiadomość to przywitanie (po polsku, angielsku albo emotką).
+fn is_greeting(text: &str) -> bool {
+    let plain: String = text
+        .to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'ą' => 'a',
+            'ć' => 'c',
+            'ę' => 'e',
+            'ł' => 'l',
+            'ń' => 'n',
+            'ó' => 'o',
+            'ś' => 's',
+            'ź' | 'ż' => 'z',
+            c => c,
+        })
+        .collect();
+    const PHRASES: [&str; 6] = ["dzien dobry", "dobry wieczor", "dobry dzien", "good morning", "good evening", "kope lat"];
+    if PHRASES.iter().any(|p| plain.contains(p)) {
+        return true;
+    }
+    const WORDS: [&str; 34] = [
+        "siema", "siemka", "siemano", "siemanko", "siemaneczko", "siemson", "hej", "hejka", "hejo", "hejeczka", "heja", "elo",
+        "eluwina", "elko", "witam", "witajcie", "witaj", "witka", "czesc", "czolem", "cze", "serwus", "jol", "joł", "hello", "hi",
+        "hey", "yo", "hola", "heyy", "heyo", "heyguys", "vohiyo", "o/",
+    ];
+    plain
+        .split(|c: char| !(c.is_alphanumeric() || c == '/' || c == '\\'))
+        .filter(|w| !w.is_empty())
+        .take(6) // powitanie jest na początku wiadomości
+        .any(|w| WORDS.contains(&w) || w == "\\o" || w == "o/" || w.starts_with("siemk") || w.starts_with("hejk"))
+}
+
 /// Opis zdarzenia dla rymowanki (None = bez rymowanki).
 fn rhyme_event(alert: &ChatAlert) -> Option<String> {
     Some(match &alert.kind {
@@ -1066,6 +1575,11 @@ fn alert_dto(alert: &ChatAlert) -> AlertDto {
         }
         AlertKind::NewChatter => d.kind = "new_chatter".into(),
         AlertKind::Follow => d.kind = "follow".into(),
+        AlertKind::Vip { title, greeting } => {
+            d.kind = "vip".into();
+            d.target = Some(title.clone());
+            d.extra = Some(greeting.clone());
+        }
         AlertKind::Redemption { reward, cost, input } => {
             d.kind = "redemption".into();
             d.amount = *cost;
@@ -1078,6 +1592,16 @@ fn alert_dto(alert: &ChatAlert) -> AlertDto {
 
 #[cfg(test)]
 mod mention_tests {
+    #[test]
+    fn greetings_are_detected() {
+        for t in ["siema", "Siemka wszystkim", "hej hej", "Dzień dobry!", "elo elo 320", "Cześć Kosmi", "HeyGuys", "o/", "witam serdecznie", "yo"] {
+            assert!(super::is_greeting(t), "{t}");
+        }
+        for t in ["ale gra", "GG", "kto gra w hejtera", "dobry stream", "hipopotam", "no i wtedy ktos mu odpisal ze jutro siema"] {
+            assert!(!super::is_greeting(t), "{t}");
+        }
+    }
+
     #[test]
     fn detects_mentions() {
         assert!(super::mentions("@Kosmi siema", "widz", "kosmi"));
