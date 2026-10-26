@@ -1,5 +1,12 @@
 ﻿# Nowa wersja: budowanie, podpis, wydanie na GitHubie. Znajomi dostaną ją sami.
+# -Auto: bez pytań (następny numer wersji, kod źródłowy też na GitHuba), log w wydania\ostatnie-wydanie.log.
+param([switch]$Auto)
 . (Join-Path $PSScriptRoot 'wspolne.ps1')
+if ($Auto) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $Root 'wydania') | Out-Null
+    Start-Transcript -Path (Join-Path $Root 'wydania\ostatnie-wydanie.log') -Force | Out-Null
+    function Read-Host($prompt) { Write-Host "$prompt -> (automatycznie)"; return $(if ($prompt -match 'kod') { 't' } else { '' }) }
+}
 
 if (-not (Use-UpdateConfig)) { Fail 'Najpierw uruchom ustaw-aktualizacje.bat (raz).' }
 if (-not (Test-Path $KeyFile)) { Fail "Brak klucza podpisu: $KeyFile — przywróć go z kopii albo uruchom ustaw-aktualizacje.bat." }

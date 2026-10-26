@@ -1,3 +1,4 @@
+#![recursion_limit = "512"]
 //! Silnik LiMBOCHAT dla OBS Studio.
 //!
 //! ## Jak to działa

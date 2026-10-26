@@ -6,6 +6,11 @@ pokazuje się w panelu w okienku „Co nowego”.
 
 ## Następna wersja
 
+## 0.6.6 — 2026-10-26
+
+- 📊 **Wyniki ankiet i predykcji** — zapytaj LimboAI „jakie są wyniki ankiety?” albo „kto wygrał predykcję?” także po jej zakończeniu: poda zwycięzcę, głosy i procenty. Przy kończeniu ankiety od razu mówi, co wygrało.
+- 🔥 **Seria oglądania na czacie** — gdy ktoś udostępni „oglądam X streamów z rzędu” razem z wiadomością, pojawia się karta z płomieniem i jego tekstem (wcześniej wiadomość znikała). Ogłoszenia moderatorów (/announce) też są widoczne na czacie.
+
 ## 0.6.5 — 2026-10-26
 
 - 🧠 **Pamięć LimboAI o widzach** — LimboAI pamięta, kto lubi koty, w co gra i ile już z Tobą ogląda. Powiedz „zapamiętaj, że kasia lubi koty” albo dopisz notatkę w karcie widza (kliknij nick). Może też sam uczyć się z czatu.

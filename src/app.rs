@@ -1009,6 +1009,7 @@ fn alert_line(a: &crate::events::ChatAlert) -> String {
         K::GiftUpgrade { .. } => format!("{n} kontynuuje suba"),
         K::NewChatter => format!("{n} jest tu pierwszy raz"),
         K::Follow => format!("{n} obserwuje kanał"),
+        K::WatchStreak { streams } => format!("{n} ogląda już {streams} streamów z rzędu"),
         K::Redemption { reward, .. } => format!("{n} odbiera nagrodę: {reward}"),
         K::Vip { greeting, .. } => greeting.clone(),
     }

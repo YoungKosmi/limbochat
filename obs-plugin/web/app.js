@@ -526,6 +526,7 @@ const ALERT_ICONS = {
   heart: '<svg viewBox="0 0 24 24"><path d="M12 21s-8-5.2-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.8-8 11-8 11z" fill="currentColor"/></svg>',
   points: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="3"/><path d="M12 7v5h5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>',
   crown: '<svg viewBox="0 0 24 24"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z" fill="currentColor"/><rect x="5" y="19.5" width="14" height="2" rx="1" fill="currentColor"/></svg>',
+  flame: '<svg viewBox="0 0 24 24"><path d="M12 2c1 4 6 6 6 12a6 6 0 0 1-12 0c0-3 1.5-5 3-6.5.3 2 1.2 3 2.5 3.5C11 8 10.5 5 12 2z" fill="currentColor"/></svg>',
   wave: '<svg viewBox="0 0 24 24"><path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11m0-6.5a1.5 1.5 0 0 1 3 0V11m0-5a1.5 1.5 0 0 1 3 0v8a7 7 0 0 1-12.5 4.3L2.6 15a1.5 1.5 0 0 1 2.3-1.9L8 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
 };
 
@@ -539,6 +540,7 @@ function alertLook(a) {
     case "mass_gift": return { icon: "gift", color: "#ff6fb5", big: a.amount >= 5, rainbow: true, label: "Gift-bomba" };
     case "raid": return { icon: "rocket", color: "#ff8a3d", big: a.amount >= 10, label: "Raid" };
     case "follow": return { icon: "heart", color: "#ff5c8a", big: false, label: "Follow" };
+    case "watch_streak": return { icon: "flame", color: "#ff7a2f", big: a.amount >= 50, label: "Seria oglądania" };
     case "redemption": return { icon: "points", color: "#31d0c6", big: a.amount >= 10000, label: "Nagroda" };
     case "vip": return { icon: "crown", color: "#ffc83a", big: true, label: (a.target || "").startsWith("Szef Kosmi") ? "Twórca LiMBOCHAT" : "Gość specjalny" };
     default: return { icon: "wave", color: "#b9a6f7", big: false, label: "Nowy" };
@@ -573,6 +575,7 @@ function alertTitle(m, a) {
     case "mass_gift": add(b(name), " rozdaje ", count(a.amount), ` ${plural(a.amount, "suba", "suby", "subów")}!`); break;
     case "raid": add(b(name), " wpada z raidem i ", count(a.amount), ` ${a.amount === 1 ? "widzem" : "widzami"}!`); break;
     case "follow": add(b(name), " obserwuje kanał!"); break;
+    case "watch_streak": add(b(name), " ogląda już ", count(a.amount), ` ${plural(a.amount, "stream", "streamy", "streamów")} z rzędu!`); break;
     case "redemption": add(b(name), " odbiera nagrodę ", b(a.target || "nagroda")); break;
     case "vip": add("👑 ", b(a.target || name), "!"); break;
     default: add(b(name), " jest tu pierwszy raz — przywitaj się!");

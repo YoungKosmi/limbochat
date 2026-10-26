@@ -68,6 +68,8 @@ pub enum AlertKind {
     BitsBadge { threshold: u64 },
     GiftUpgrade { gifter: Option<String> },
     NewChatter,
+    /// „Oglądam X streamów z rzędu” (Twitch: viewermilestone / watch-streak).
+    WatchStreak { streams: u64 },
     Follow,
     Redemption { reward: String, cost: u64, input: Option<String> },
     /// Powitanie VIP-a (np. twórcy LiMBOCHAT) — `title` na kartę, `greeting` mówi LimboAI.

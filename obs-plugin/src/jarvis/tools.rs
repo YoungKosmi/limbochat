@@ -298,6 +298,16 @@ impl Executor {
             "add_vip" => ok(json!({ "ok": true, "user": user() }), Some(format!("💎 VIP: {}", user()))),
             "remove_vip" => ok(json!({ "ok": true, "user": user() }), Some(format!("💎 Odebrano VIP: {}", user()))),
             "warn_user" => ok(json!({ "ok": true, "user": user() }), Some(format!("⚠ Ostrzeżenie: {}", user()))),
+            "poll_results" => ok(
+                json!({ "poll": { "title": "Co gramy dalej?", "status": "zakończona (minął czas)", "total_votes": 47, "winner": "Minecraft",
+                    "choices": [{ "title": "Minecraft", "votes": 29, "percent": 62 }, { "title": "GTA", "votes": 18, "percent": 38 }] } }),
+                None,
+            ),
+            "prediction_results" => ok(
+                json!({ "prediction": { "title": "Wygram tę rundę?", "status": "rozstrzygnięta", "winner": "Tak",
+                    "outcomes": [{ "title": "Tak", "users": 21, "channel_points": 18400 }, { "title": "Nie", "users": 15, "channel_points": 9100 }] } }),
+                None,
+            ),
             _ => ok(json!({ "ok": true, "demo": true }), Some(demo_label(name, args))),
         }
     }
@@ -506,8 +516,22 @@ async fn run_helix(helix: &Helix, ctx: &Context, own: &ChannelRef, name: &str, a
             ok(json!({ "ok": true }), Some(format!("📊 Ankieta: {title}")))
         }
         "end_poll" => match helix.end_poll(&own.id).await.map_err(e)? {
-            Some(title) => ok(json!({ "ok": true, "poll": title }), Some("⏹ Ankieta zakończona".into())),
+            Some(poll) => {
+                let label = match poll["winner"].as_str() {
+                    Some(w) => format!("⏹ Ankieta zakończona — wygrywa: {w}"),
+                    None => "⏹ Ankieta zakończona".into(),
+                };
+                ok(json!({ "ok": true, "poll": poll }), Some(label))
+            }
             None => return Err("Nie ma trwającej ankiety.".into()),
+        },
+        "poll_results" => match helix.poll_results(&own.id).await.map_err(e)? {
+            Some(poll) => ok(json!({ "poll": poll }), None),
+            None => ok(json!({ "poll": null, "note": "Na tym kanale nie było jeszcze żadnej ankiety." }), None),
+        },
+        "prediction_results" => match helix.prediction_results(&own.id).await.map_err(e)? {
+            Some(p) => ok(json!({ "prediction": p }), None),
+            None => ok(json!({ "prediction": null, "note": "Na tym kanale nie było jeszcze żadnej predykcji." }), None),
         },
         other => return Err(format!("Nieznane narzędzie: {other}")),
     })
@@ -843,7 +867,9 @@ pub fn declarations() -> Value {
               "choices": { "type": "array", "items": { "type": "string" }, "description": "2–5 odpowiedzi, każda max 25 znaków" },
               "seconds": { "type": "integer", "description": "Czas trwania 15–1800 s, domyślnie 120" } },
             "required": ["question", "choices"] } },
-        { "name": "end_poll", "description": "Kończy trwającą ankietę." },
+        { "name": "end_poll", "description": "Kończy trwającą ankietę i zwraca jej wyniki." },
+        { "name": "poll_results", "description": "Wyniki ostatniej ankiety na kanale — także już zakończonej (głosy, procenty, zwycięzca). Użyj, gdy pytają o wyniki ankiety." },
+        { "name": "prediction_results", "description": "Wyniki ostatniej predykcji — także zakończonej (ile osób i punktów na każdą odpowiedź, zwycięzca)." },
         { "name": "add_moderator", "description": "Daje użytkownikowi moderatora na Twoim kanale (wymaga potwierdzenia).",
           "parameters": { "type": "object", "properties": { "user": user }, "required": ["user"] } },
         { "name": "remove_moderator", "description": "Odbiera moderatora.",

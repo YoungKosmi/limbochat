@@ -89,12 +89,20 @@ struct Prediction {
     title: String,
     status: String,
     outcomes: Vec<PredictionOutcome>,
+    #[serde(default)]
+    winning_outcome_id: Option<String>,
+    #[serde(default)]
+    created_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct PredictionOutcome {
     id: String,
     title: String,
+    #[serde(default)]
+    users: u64,
+    #[serde(default)]
+    channel_points: u64,
 }
 
 /// Jak zakończyć predykcję.
@@ -110,6 +118,19 @@ struct Poll {
     id: String,
     title: String,
     status: String,
+    #[serde(default)]
+    choices: Vec<PollChoice>,
+    #[serde(default)]
+    started_at: Option<String>,
+    #[serde(default)]
+    ended_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PollChoice {
+    title: String,
+    #[serde(default)]
+    votes: u64,
 }
 
 /// Tryby czatu, które Jarvis może przełączać.
@@ -323,8 +344,37 @@ impl Helix {
         Ok(())
     }
 
-    /// Kończy trwającą ankietę (wyniki zostają widoczne). Zwraca jej tytuł.
-    pub async fn end_poll(&self, broadcaster_id: &str) -> Result<Option<String>, HelixError> {
+    /// Wyniki ostatniej ankiety (trwającej albo już zakończonej). `None` = nie było żadnej.
+    pub async fn poll_results(&self, broadcaster_id: &str) -> Result<Option<Value>, HelixError> {
+        let resp: Data<Poll> = self
+            .request(Method::GET, "/polls", &[("broadcaster_id", broadcaster_id), ("first", "1")], None)
+            .await?
+            .json()
+            .await?;
+        Ok(resp.data.into_iter().next().map(|p| poll_json(&p)))
+    }
+
+    /// Wyniki ostatniej predykcji (trwającej, zablokowanej albo rozstrzygniętej).
+    pub async fn prediction_results(&self, broadcaster_id: &str) -> Result<Option<Value>, HelixError> {
+        let resp: Data<Prediction> = self
+            .request(Method::GET, "/predictions", &[("broadcaster_id", broadcaster_id), ("first", "1")], None)
+            .await?
+            .json()
+            .await?;
+        Ok(resp.data.into_iter().next().map(|p| {
+            let winner = p.winning_outcome_id.as_deref().and_then(|id| p.outcomes.iter().find(|o| o.id == id)).map(|o| o.title.clone());
+            json!({
+                "title": p.title,
+                "status": prediction_status(&p.status),
+                "created_at": p.created_at,
+                "winner": winner,
+                "outcomes": p.outcomes.iter().map(|o| json!({ "title": o.title, "users": o.users, "channel_points": o.channel_points })).collect::<Vec<_>>(),
+            })
+        }))
+    }
+
+    /// Kończy trwającą ankietę (wyniki zostają widoczne). Zwraca jej wyniki.
+    pub async fn end_poll(&self, broadcaster_id: &str) -> Result<Option<Value>, HelixError> {
         let resp: Data<Poll> = self
             .request(Method::GET, "/polls", &[("broadcaster_id", broadcaster_id), ("first", "5")], None)
             .await?
@@ -332,8 +382,8 @@ impl Helix {
             .await?;
         let Some(poll) = resp.data.into_iter().find(|p| p.status == "ACTIVE") else { return Ok(None) };
         let body = json!({ "broadcaster_id": broadcaster_id, "id": poll.id, "status": "TERMINATED" });
-        self.request(Method::PATCH, "/polls", &[], Some(&body)).await?;
-        Ok(Some(poll.title))
+        let ended: Data<Poll> = self.request(Method::PATCH, "/polls", &[], Some(&body)).await?.json().await.unwrap_or(Data { data: Vec::new() });
+        Ok(Some(ended.data.first().map_or_else(|| poll_json(&poll), poll_json)))
     }
 }
 
@@ -473,4 +523,47 @@ mod tests {
         assert_eq!(ChatMode::parse("emote_only"), Some(ChatMode::EmoteOnly));
         assert_eq!(ChatMode::parse("cokolwiek"), None);
     }
+}
+
+fn poll_status(status: &str) -> &'static str {
+    match status {
+        "ACTIVE" => "trwa",
+        "COMPLETED" => "zakończona (minął czas)",
+        "TERMINATED" => "zakończona ręcznie (wyniki widoczne)",
+        "ARCHIVED" => "zakończona i schowana",
+        "MODERATED" | "INVALID" => "usunięta",
+        _ => "nieznany",
+    }
+}
+
+fn prediction_status(status: &str) -> &'static str {
+    match status {
+        "ACTIVE" => "trwa (można obstawiać)",
+        "LOCKED" => "zablokowana (czeka na wynik)",
+        "RESOLVED" => "rozstrzygnięta",
+        "CANCELED" => "anulowana (punkty zwrócone)",
+        _ => "nieznany",
+    }
+}
+
+/// Ankieta w formie dla AI: odpowiedzi od najpopularniejszej, z procentami.
+fn poll_json(p: &Poll) -> Value {
+    let total: u64 = p.choices.iter().map(|c| c.votes).sum();
+    let mut choices: Vec<&PollChoice> = p.choices.iter().collect();
+    choices.sort_by(|a, b| b.votes.cmp(&a.votes));
+    let top = choices.first().map(|c| c.votes).unwrap_or(0);
+    let winners: Vec<&str> = if total > 0 { choices.iter().filter(|c| c.votes == top).map(|c| c.title.as_str()).collect() } else { Vec::new() };
+    json!({
+        "title": p.title,
+        "status": poll_status(&p.status),
+        "started_at": p.started_at,
+        "ended_at": p.ended_at,
+        "total_votes": total,
+        "winner": if winners.len() == 1 { json!(winners[0]) } else if winners.is_empty() { Value::Null } else { json!(format!("remis: {}", winners.join(", "))) },
+        "choices": choices.iter().map(|c| json!({
+            "title": c.title,
+            "votes": c.votes,
+            "percent": if total > 0 { (c.votes * 100 + total / 2) / total } else { 0 },
+        })).collect::<Vec<_>>(),
+    })
 }

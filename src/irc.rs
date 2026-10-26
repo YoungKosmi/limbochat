@@ -63,7 +63,7 @@ pub fn translate(msg: ServerMessage, emotes: &EmoteStore, scale: EmoteScale) -> 
         }
         ServerMessage::UserNotice(m) => {
             let map = emotes.map_for(&m.channel_id);
-            return usernotice_to_alert(m, &map, scale).map(|a| IrcEvent::Ui(UiEvent::Alert(Box::new(a))));
+            return usernotice_to_event(m, &map, scale).map(IrcEvent::Ui);
         }
         ServerMessage::ClearMsg(m) => IrcEvent::Ui(UiEvent::MessageDeleted {
             channel: m.channel_login,
@@ -132,9 +132,17 @@ fn privmsg_to_parsed(m: PrivmsgMessage, emotes: &EmoteMap, scale: EmoteScale) ->
     }
 }
 
-/// USERNOTICE (sub, resub, gifty, raid…) → alert. Nieznane rodzaje pomijamy.
-fn usernotice_to_alert(m: UserNoticeMessage, emotes: &EmoteMap, scale: EmoteScale) -> Option<ChatAlert> {
-    let kind = match &m.event {
+/// USERNOTICE (sub, resub, gifty, raid, seria oglądania…) → alert.
+/// Inne rodzaje z dołączonym tekstem (np. ogłoszenia) trafiają na czat jako zwykła wiadomość.
+fn usernotice_to_event(m: UserNoticeMessage, emotes: &EmoteMap, scale: EmoteScale) -> Option<UiEvent> {
+    match usernotice_kind(&m) {
+        Some(kind) => usernotice_to_alert(m, kind, emotes, scale).map(|a| UiEvent::Alert(Box::new(a))),
+        None => usernotice_message(&m, emotes, scale).map(|p| UiEvent::Message(Box::new(p))),
+    }
+}
+
+fn usernotice_kind(m: &UserNoticeMessage) -> Option<AlertKind> {
+    Some(match &m.event {
         UserNoticeEvent::SubOrResub { is_resub, cumulative_months, sub_plan, .. } => {
             AlertKind::Sub { tier: sub_tier(sub_plan), months: *cumulative_months, resub: *is_resub }
         }
@@ -159,9 +167,19 @@ fn usernotice_to_alert(m: UserNoticeMessage, emotes: &EmoteMap, scale: EmoteScal
         UserNoticeEvent::AnonGiftPaidUpgrade { .. } => AlertKind::GiftUpgrade { gifter: None },
         UserNoticeEvent::Ritual { ritual_name } if ritual_name == "new_chatter" => AlertKind::NewChatter,
         UserNoticeEvent::BitsBadgeTier { threshold } => AlertKind::BitsBadge { threshold: *threshold },
+        _ if m.event_id == "viewermilestone" => {
+            let tag = |k: &str| m.source.tags.0.get(k).and_then(|v| v.as_deref()).unwrap_or_default().to_owned();
+            if tag("msg-param-category") != "watch-streak" {
+                return None;
+            }
+            AlertKind::WatchStreak { streams: tag("msg-param-value").parse().unwrap_or(0) }
+        }
         _ => return None,
-    };
-    let message = m.message_text.as_ref().filter(|t| !t.trim().is_empty()).map(|text| {
+    })
+}
+
+fn usernotice_message(m: &UserNoticeMessage, emotes: &EmoteMap, scale: EmoteScale) -> Option<ParsedMessage> {
+    m.message_text.as_ref().filter(|t| !t.trim().is_empty()).map(|text| {
         let refs: SmallVec<[TwitchEmoteRef<'_>; 8]> = m.emotes.iter().map(|e| TwitchEmoteRef { id: &e.id, code: &e.code }).collect();
         ParsedMessage {
             id: m.message_id.clone(),
@@ -178,7 +196,11 @@ fn usernotice_to_alert(m: UserNoticeMessage, emotes: &EmoteMap, scale: EmoteScal
             raw_text: text.clone(),
             deleted: false,
         }
-    });
+    })
+}
+
+fn usernotice_to_alert(m: UserNoticeMessage, kind: AlertKind, emotes: &EmoteMap, scale: EmoteScale) -> Option<ChatAlert> {
+    let message = usernotice_message(&m, emotes, scale);
     Some(ChatAlert {
         id: m.message_id,
         channel_login: m.channel_login,
@@ -207,6 +229,19 @@ mod tests {
         match translate_raw(raw) {
             Some(IrcEvent::Ui(UiEvent::Alert(a))) => *a,
             other => panic!("oczekiwano alertu, jest {other:?}"),
+        }
+    }
+
+    #[test]
+    fn watch_streak_shows_with_message_and_announcements_reach_chat() {
+        let streak = alert("@badge-info=;badges=;color=#8A2BE2;display-name=Widz;emotes=;flags=;id=w1;login=widz;mod=0;msg-id=viewermilestone;msg-param-category=watch-streak;msg-param-copoReward=450;msg-param-id=x;msg-param-value=40;room-id=1;subscriber=0;system-msg=Widz\\swatched\\s40\\sconsecutive\\sstreams;tmi-sent-ts=1700000000000;user-id=9;user-type= :tmi.twitch.tv USERNOTICE #kanal :40 dni z rzędu, pozdro!");
+        assert_eq!(streak.kind, AlertKind::WatchStreak { streams: 40 });
+        assert_eq!(streak.message.as_ref().map(|m| m.raw_text.as_str()), Some("40 dni z rzędu, pozdro!"));
+
+        let raw = "@badge-info=;badges=moderator/1;color=;display-name=Mod;emotes=;flags=;id=a1;login=mod;mod=1;msg-id=announcement;msg-param-color=PRIMARY;room-id=1;subscriber=0;system-msg=;tmi-sent-ts=1700000000000;user-id=5;user-type=mod :tmi.twitch.tv USERNOTICE #kanal :Ważne ogłoszenie";
+        match translate_raw(raw) {
+            Some(IrcEvent::Ui(UiEvent::Message(m))) => assert_eq!(m.raw_text, "Ważne ogłoszenie"),
+            other => panic!("ogłoszenie powinno trafić na czat, jest {other:?}"),
         }
     }
 

@@ -121,6 +121,7 @@ pub fn alert(channel: &str, kind: &str, map: &EmoteMap) -> ChatAlert {
         "mass_gift" => ("SzerokiFan", Some("#2e8b57"), AlertKind::MassGift { tier: "1".into(), count: 5, total: Some(25), anonymous: false }, None),
         "raid" => ("Rajderka", Some("#ff8c00"), AlertKind::Raid { viewers: 42, avatar: String::new() }, None),
         "follow" => ("nowy_widz", None, AlertKind::Follow, None),
+        "watch_streak" => ("Pixelka", Some("#ff7a2f"), AlertKind::WatchStreak { streams: 40 }, Some("40 streamów z rzędu, nie odpuszczam! catJAM")),
         "redemption" => (
             "kasia_gra",
             None,
@@ -152,7 +153,7 @@ pub fn alert(channel: &str, kind: &str, map: &EmoteMap) -> ChatAlert {
 }
 
 /// Kolejność alertów w trybie demo.
-pub const ALERT_CYCLE: [&str; 8] = ["bits", "sub", "follow", "mass_gift", "redemption", "raid", "gift", "bits_big"];
+pub const ALERT_CYCLE: [&str; 9] = ["bits", "sub", "follow", "watch_streak", "mass_gift", "redemption", "raid", "gift", "bits_big"];
 
 /// Przykładowe statystyki 97-minutowego streama (podgląd podsumowania w trybie demo).
 pub fn stream_stats(started: chrono::DateTime<chrono::Utc>) -> crate::summary::Stats {

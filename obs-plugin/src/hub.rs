@@ -1529,6 +1529,7 @@ fn rhyme_event(alert: &ChatAlert) -> Option<String> {
         AlertKind::Raid { viewers, .. } => format!("wpadł(a) z raidem i {viewers} widzami"),
         AlertKind::BitsBadge { threshold } => format!("zdobył(a) odznakę za {threshold} bitsów"),
         AlertKind::Follow => "zaczął/zaczęła obserwować kanał".into(),
+        AlertKind::WatchStreak { streams } => format!("ogląda kanał już {streams} streamów z rzędu"),
         AlertKind::Redemption { reward, .. } => format!("odebrał(a) nagrodę za punkty kanału: {reward}"),
         _ => return None,
     })
@@ -1574,6 +1575,10 @@ fn alert_dto(alert: &ChatAlert) -> AlertDto {
             d.target = gifter.clone();
         }
         AlertKind::NewChatter => d.kind = "new_chatter".into(),
+        AlertKind::WatchStreak { streams } => {
+            d.kind = "watch_streak".into();
+            d.amount = *streams;
+        }
         AlertKind::Follow => d.kind = "follow".into(),
         AlertKind::Vip { title, greeting } => {
             d.kind = "vip".into();
