@@ -244,6 +244,15 @@ impl Executor {
                 }
                 None => fail("Nie znam tego koloru. Dostępne: fiolet, róż, czerwień, pomarańcz, złoto, zieleń, turkus, niebieski, srebro albo #RRGGBB."),
             },
+            "whats_new" => {
+                let recent: Vec<Value> = crate::changelog::recent()
+                    .into_iter()
+                    .take(2)
+                    .map(|e| json!({ "version": e.version, "changes": e.items.iter().map(|i| i.replace("**", "")).collect::<Vec<_>>() }))
+                    .collect();
+                let pending = ctx.update.as_ref().map(|(v, notes)| json!({ "version": v, "changes": notes }));
+                ok(json!({ "installed_version": crate::version(), "installed_changes_newest_first": recent, "update_waiting_for_install": pending }), None)
+            }
             "get_support" => ok(
                 if ctx.support.is_null() { json!({ "info": "brak alertów — kanał nie jest otwarty albo nikt jeszcze nie wspierał" }) } else { ctx.support.clone() },
                 None,
@@ -931,6 +940,7 @@ pub fn declarations() -> Value {
         { "name": "cancel_raid", "description": "Anuluje rozpoczęty raid." },
         { "name": "create_clip", "description": "Tworzy klip z ostatnich sekund streamu. send_to_chat = wyślij link na czat (np. „zrób klipa i wrzuć na czat”).",
           "parameters": { "type": "object", "properties": { "send_to_chat": { "type": "boolean" } } } },
+        { "name": "whats_new", "description": "Co nowego w LiMBOCHAT: zmiany w zainstalowanej wersji (i poprzedniej) oraz w wersji czekającej na instalację. Użyj na „co nowego?”, „co dała aktualizacja?”." },
         { "name": "get_support", "description": "Kto ostatnio wspierał kanał (suby, bitsy, gifty, raidy, follow, nagrody) i suma od początku streama (bitsy, suby, top wspierający)." },
         { "name": "create_marker", "description": "Dodaje marker w nagraniu streamu (do późniejszego montażu).",
           "parameters": { "type": "object", "properties": { "description": { "type": "string" } } } },
@@ -1137,6 +1147,14 @@ mod tests {
         assert_eq!(audio_input("muzykę", &list, &names).as_deref(), Some("Spotify"));
         assert_eq!(audio_input("grę", &list, &names).as_deref(), Some("Game Capture"));
         assert_eq!(audio_input("pulpit", &list, &names).as_deref(), Some("Dźwięk pulpitu"));
+    }
+
+    #[tokio::test]
+    async fn whats_new_lists_installed_changes() {
+        let mut ex = Executor::new(None, Local::default());
+        let out = ex.run(&ctx(), "whats_new", &json!({})).await;
+        assert_eq!(out.result["installed_version"], crate::version());
+        assert!(out.result["installed_changes_newest_first"].is_array());
     }
 
     #[tokio::test]

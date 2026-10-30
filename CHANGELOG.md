@@ -6,6 +6,7 @@ pokazuje się w panelu w okienku „Co nowego”.
 
 ## Następna wersja
 
+- 💬 **„Co nowego?”** — LimboAI opowiada, co zmieniła ostatnia aktualizacja (wcześniej mówił tylko, że wersja jest aktualna).
 - 🔉 **Głośność głosem** — „ścisz grę”, „muzyka na 30%”, „podgłośnij pulpit”.
 - 💜 **Kto wspierał** — „kto ostatnio zasubował?”, „ile dziś bitsów?”, „kto dał raid?”.
 - 🎬 **Klip na czat** — „zrób klipa i wrzuć na czat”: LimboAI robi klip i od razu wysyła link.
