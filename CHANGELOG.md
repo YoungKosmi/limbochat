@@ -6,8 +6,9 @@ pokazuje się w panelu w okienku „Co nowego”.
 
 ## Następna wersja
 
-- Połączenie IRC korzysta z systemowego TLS; usunięto stare zależności rustls 0.21 i webpki 0.101 zgłaszane przez GitHub.
+## 0.6.7 — 2026-10-30
 
+- Połączenie IRC korzysta z systemowego TLS; usunięto stare zależności rustls 0.21 i webpki 0.101 zgłaszane przez GitHub.
 - Pamięć widzów ponawia zapis po błędzie dysku zamiast pomijać niezapisane zmiany.
 - Kilka nakładek zero-width 7TV poprawnie łączy się z emotką Twitcha także po opóźnionym załadowaniu emotek.
 - Okno „Co nowego” pomija niewydane zmiany i nie powtarza bieżącej wersji jako nowej aktualizacji.

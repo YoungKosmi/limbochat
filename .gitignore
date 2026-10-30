@@ -22,3 +22,7 @@ LiMBOCHAT-na-komputer.zip
 *.log
 *.tmp
 *.bak
+*.zip
+*.exe
+*.dll
+handover.json
