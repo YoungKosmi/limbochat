@@ -6,6 +6,8 @@ pokazuje się w panelu w okienku „Co nowego”.
 
 ## Następna wersja
 
+## 0.7.2 — 2026-10-30
+
 - ⬆️ **LimboAI pyta o aktualizacje** — gdy wyjdzie nowa wersja, LimboAI powie o tym i zapyta, czy zainstalować. Powiedz „zainstaluj”, a zrobi to od razu (bez restartu OBS), albo zapytaj „co nowego?”. Możesz też w każdej chwili powiedzieć „sprawdź, czy jest nowa wersja”. Bez odpowiedzi nic się nie dzieje — możesz zainstalować później w ⚙ → Aktualizacje. Wolisz jak dawniej? ⚙ → Aktualizacje → Automatycznie.
 - 🗣️ **Naturalny głos LimboAI** — LimboAI mówi teraz głosem Gemini, który brzmi jak człowiek, a nie jak robot. Barwę głosu wybierzesz w ⚙ → LimboAI → Głos LimboAI. Gdy Gemini nie działa (limit, brak internetu), LimboAI sam wraca do głosu systemowego Windows.
 - 📊 **Zużycie AI dzisiaj** — w ⚙ → LimboAI widać, ile zapytań do Gemini (mózg i głos) oraz rozpoznawania mowy poszło od rana i czy skończył się limit.
