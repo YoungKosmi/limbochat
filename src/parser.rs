@@ -152,9 +152,10 @@ pub fn retokenize(segments: &mut SmallVec<[Segment; 8]>, emotes: &EmoteMap, scal
 /// dawnych segmentów (np. `KEKW` z Twitcha + nowo poznany `RainTime`).
 fn push_merged(out: &mut SmallVec<[Segment; 8]>, seg: Segment) {
     if let Segment::Emote(e) = &seg {
-        if e.base.zero_width && e.overlays.is_empty() {
+        if e.base.zero_width {
             if let Some(Segment::Emote(prev)) = out.last_mut() {
                 prev.overlays.push(e.base.clone());
+                prev.overlays.extend(e.overlays.iter().cloned());
                 return;
             }
         }
@@ -302,5 +303,14 @@ mod tests {
     fn emote_names_are_case_sensitive() {
         let segs = tokenize("kekw", &[], &map(), EmoteScale::X1);
         assert_eq!(kinds(&segs), ["T(kekw)"]);
+    }
+
+    #[test]
+    fn late_zero_width_chain_stays_on_the_twitch_emote() {
+        let twitch = [TwitchEmoteRef { id: "25", code: "Kappa" }];
+        let mut segs = tokenize("Kappa RainTime RainTime", &twitch, &EmoteMap::default(), EmoteScale::X1);
+        assert!(retokenize(&mut segs, &map(), EmoteScale::X1));
+        assert_eq!(kinds(&segs), ["E(Kappa+2)"]);
+        assert!(!retokenize(&mut segs, &map(), EmoteScale::X1));
     }
 }

@@ -1,0 +1,24 @@
+name: Błąd
+description: Zgłoś problem z działaniem LiMBOCHAT.
+title: "[Błąd] "
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Wersja LiMBOCHAT
+      description: Numer z ustawień oraz wersja Windows i OBS.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Jak odtworzyć problem?
+      description: Opisz kolejne kroki oraz oczekiwany i rzeczywisty wynik.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logi lub zrzut ekranu
+      description: Usuń tokeny, klucze API, hasło OBS i dane widzów przed dodaniem załącznika.

@@ -12,6 +12,7 @@
 [![OBS](https://img.shields.io/badge/OBS-28%2B-302e3a?style=for-the-badge&logo=obsstudio&logoColor=white)](#instalacja)
 [![Rust](https://img.shields.io/badge/Rust-2024-b7410e?style=for-the-badge&logo=rust&logoColor=white)](#budowanie)
 [![Licencja MIT](https://img.shields.io/badge/licencja-MIT-3f9e6e?style=for-the-badge)](LICENSE)
+[![CI](https://github.com/YoungKosmi/limbochat/actions/workflows/ci.yml/badge.svg)](https://github.com/YoungKosmi/limbochat/actions/workflows/ci.yml)
 
 [**⬇️ Pobierz**](https://github.com/YoungKosmi/limbochat/releases/latest) ·
 [Funkcje](#funkcje) ·
@@ -53,9 +54,7 @@
 <tr>
 <td valign="top">
 
-#<a id="limboai"></a>
-
-## 🎙️ LimboAI — asystent głosowy
+### 🎙️ LimboAI — asystent głosowy
 - **Shift + Z + X**, jeden przycisk (push-to-talk) albo **„Hej Limbo”**
 - Kategoria, tytuł, timeout, ban, mod, VIP, raid, klip, ankieta, zakłady i wiele więcej
 - Odpowiada po polsku głosem; pyta o potwierdzenie przy groźnych akcjach
@@ -71,7 +70,7 @@
 - **Podsumowanie streama** po kliknięciu „Zakończ stream” w OBS: wykresy, top czatu, wsparcie i tekst od LimboAI
 - **Autoaktualizacje bez restartu OBS** — podpisane, z przekazaniem czatu i okienkiem „Co nowego”
 - Motyw „liquid glass” w dowolnym kolorze (zmiana też głosem)
-- Wszystko działa lokalnie, klucze w sejfie Windows
+- Panel działa lokalnie, klucze w sejfie Windows; usługi AI zależą od wybranego dostawcy
 
 </td>
 </tr>
@@ -113,6 +112,8 @@
 **Overlay na stream:** *Źródła → + → Przeglądarka* → `http://127.0.0.1:47250/overlay`, rozmiar 800 × 300.
 
 **Kolejne wersje instalują się same** — w trakcie streama, gdy LimboAI nic nie robi. OBS nie musi być restartowany, czat zostaje.
+
+<a id="limboai"></a>
 
 ## 🎙️ LimboAI — asystent głosowy
 
@@ -165,7 +166,7 @@ Po kliknięciu *Zakończ stream* w OBS panel pokaże podsumowanie (można też �
 <details>
 <summary><b>Pamięć o widzach</b></summary>
 
-LimboAI zapisuje krótkie fakty o widzach (maks. 12 na osobę) i liczy ich wiadomości, streamy i wsparcie. Fakty dopisujesz głosem albo w karcie widza (kliknij nick); LimboAI może też sam wyłapywać je z czatu co 10 minut. Pamięć leży tylko na Twoim komputerze (`%APPDATA%\LiMBOCHAT\pamiec-widzow.json`) i nie zapisuje danych wrażliwych.
+LimboAI zapisuje krótkie fakty o widzach (maks. 12 na osobę) i liczy ich wiadomości, streamy i wsparcie. Fakty dopisujesz głosem albo w karcie widza (kliknij nick); LimboAI może też sam wyłapywać je z czatu co 10 minut. Plik pamięci jest na Twoim komputerze (`%APPDATA%\LiMBOCHAT\pamiec-widzow.json`). Przy automatycznej nauce fragmenty czatu, a przy odpowiedziach odpowiednie notatki mogą trafić do wybranego dostawcy AI. Instrukcja modelu zabrania wyciągania danych wrażliwych; nie jest to gwarancja filtrowania wszystkich takich danych.
 
 </details>
 
@@ -202,6 +203,8 @@ Silnik jest **osobnym procesem** — dlatego może się zaktualizować w trakcie
 ## 🛠️ Budowanie ze źródeł
 
 Potrzebny [Rust](https://rustup.rs) i (na Windows) Visual Studio Build Tools z pakietem C++.
+
+Mapa plików, komendy testów i zasady wydawania: [dokumentacja deweloperska](docs/DEVELOPMENT.md). Zasady współpracy: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 | Skrypt | Co robi |
 |---|---|

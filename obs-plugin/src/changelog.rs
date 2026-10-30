@@ -37,15 +37,21 @@ pub fn parse(text: &str) -> Vec<Entry> {
 
 /// Ostatnie wpisy (przycisk „Co nowego” w ustawieniach).
 pub fn recent() -> Vec<Entry> {
-    parse(CHANGELOG).into_iter().take(4).collect()
+    released(CHANGELOG, crate::version()).into_iter().take(4).collect()
+}
+
+fn released(text: &str, current: &str) -> Vec<Entry> {
+    parse(text).into_iter()
+        .filter(|e| e.version != NEXT && (e.version == current || crate::update::is_newer(current, &e.version)))
+        .collect()
 }
 
 /// Wpisy do pokazania po aktualizacji z `from` (nowsze niż `from`, najwyżej 3 wersje).
 pub fn since(from: Option<&str>) -> Vec<Entry> {
-    let all = parse(CHANGELOG);
+    let all = released(CHANGELOG, crate::version());
     let Some(from) = from else { return all.into_iter().take(1).collect() };
     all.into_iter()
-        .filter(|e| e.version == NEXT || e.version == crate::version() || crate::update::is_newer(&e.version, from))
+        .filter(|e| crate::update::is_newer(&e.version, from))
         .take(3)
         .collect()
 }
@@ -62,5 +68,13 @@ mod tests {
         assert_eq!(e[0].version, "0.7.0");
         assert_eq!(e[0].items, ["**Nowe** coś dalszy ciąg", "drugie"]);
         assert!(!parse(CHANGELOG).is_empty(), "wbudowany CHANGELOG się parsuje");
+    }
+
+    #[test]
+    fn whats_new_excludes_unreleased_and_future_changes() {
+        let text = "## Następna wersja\n- szkic\n## 0.7.0\n- przyszłość\n## 0.6.6\n- obecna\n## 0.6.5\n- starsza\n";
+        let entries = released(text, "0.6.6");
+        assert_eq!(entries.iter().map(|e| e.version.as_str()).collect::<Vec<_>>(), ["0.6.6", "0.6.5"]);
+        assert!(since(Some(crate::version())).is_empty());
     }
 }

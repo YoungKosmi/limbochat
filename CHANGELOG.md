@@ -6,6 +6,12 @@ pokazuje się w panelu w okienku „Co nowego”.
 
 ## Następna wersja
 
+- Pamięć widzów ponawia zapis po błędzie dysku zamiast pomijać niezapisane zmiany.
+- Kilka nakładek zero-width 7TV poprawnie łączy się z emotką Twitcha także po opóźnionym załadowaniu emotek.
+- Okno „Co nowego” pomija niewydane zmiany i nie powtarza bieżącej wersji jako nowej aktualizacji.
+- Wydania wskazują commit właściwych źródeł; skrypt blokuje istniejące tagi i nie usuwa wydań po błędzie połączenia.
+- Dodano automatyczne testy Windows na GitHubie, formularze zgłoszeń, dokumentację rozwoju i reguły plików lokalnych.
+
 ## 0.6.6 — 2026-10-26
 
 - 📊 **Wyniki ankiet i predykcji** — zapytaj LimboAI „jakie są wyniki ankiety?” albo „kto wygrał predykcję?” także po jej zakończeniu: poda zwycięzcę, głosy i procenty. Przy kończeniu ankiety od razu mówi, co wygrało.

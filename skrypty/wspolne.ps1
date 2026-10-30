@@ -85,7 +85,7 @@ function Ensure-RepoNotEmpty($repo) {
 
 # Pliki projektu bez rzeczy lokalnych i prywatnych (kompilacja, wydania, paczki, wszystkie klucze).
 function Get-SourceFiles {
-    $skipDirs = @('target', 'wydania', 'LiMBOCHAT-OBS-dla-znajomego', '.git', 'node_modules')
+    $skipDirs = @('target', 'wydania', 'LiMBOCHAT-OBS-dla-znajomego', '.git', 'node_modules', 'work', 'outputs', '.idea', '.vscode')
     $files = New-Object System.Collections.Generic.List[object]
     $walk = {
         param($dir, $prefix)
@@ -93,7 +93,7 @@ function Get-SourceFiles {
             $rel = if ($prefix) { "$prefix/$($item.Name)" } else { $item.Name }
             if ($item.PSIsContainer) {
                 if ($skipDirs -notcontains $item.Name) { & $walk $item.FullName $rel }
-            } elseif ($item.Name -notmatch '\.(key|zip|log)$' -and $item.Name -notmatch '^(aktualizacje-.*\.txt|klucze-limboai\.json|import-keys\.json|handover\.json)$') {
+            } elseif ($item.Name -notmatch '\.(key|pem|pfx|p12|zip|log|exe|dll|tmp|bak)$' -and $item.Name -notmatch '^\.env($|\.)|^(aktualizacje-.*\.txt|klucze-limboai\.json|import-keys\.json|handover\.json)$') {
                 $files.Add([pscustomobject]@{ Path = $rel; Full = $item.FullName })
             }
         }
@@ -134,7 +134,13 @@ function Publish-Source($repo, $message) {
     foreach ($f in $files) {
         $i++
         Write-Progress -Activity 'Wysyłanie kodu na GitHuba' -Status $f.Path -PercentComplete ([int](100 * $i / $files.Count))
-        $content = [Convert]::ToBase64String([IO.File]::ReadAllBytes($f.Full))
+        $bytes = [IO.File]::ReadAllBytes($f.Full)
+        # Tak samo jak Git + .gitattributes: tekst w repozytorium ma LF.
+        # UTF-8 BOM skryptów PowerShell pozostaje zachowany dla Windows PowerShell 5.1.
+        if ($f.Path -match '\.(rs|toml|lock|md|js|css|html|yml|yaml|ps1|bat|txt)$|(^|/)(\.gitignore|\.gitattributes|\.editorconfig)$') {
+            $bytes = [Text.Encoding]::UTF8.GetBytes([Text.Encoding]::UTF8.GetString($bytes).Replace("`r`n", "`n"))
+        }
+        $content = [Convert]::ToBase64String($bytes)
         $sha = Invoke-GhJson 'POST' "repos/$repo/git/blobs" ('{"encoding":"base64","content":"' + $content + '"}') '.sha'
         $tree.Add(@{ path = $f.Path; mode = '100644'; type = 'blob'; sha = $sha })
     }
@@ -142,11 +148,13 @@ function Publish-Source($repo, $message) {
 
     # Bez base_tree: repozytorium ma dokładnie te pliki (usunięte lokalnie znikają też tam).
     $treeSha = Invoke-GhJson 'POST' "repos/$repo/git/trees" @{ tree = $tree.ToArray() } '.sha'
+    $publishedHead = $head
     if ($treeSha -eq $baseTree) {
         Say 'Kod na GitHubie jest już aktualny — nic do wysłania.' 'Green'
     } else {
         $commit = Invoke-GhJson 'POST' "repos/$repo/git/commits" @{ message = $message; tree = $treeSha; parents = @($head) } '.sha'
         Invoke-GhJson 'PATCH' "repos/$repo/git/refs/heads/$branch" @{ sha = $commit; force = $false } '.object.sha' | Out-Null
+        $publishedHead = $commit
         Say "Kod wysłany: https://github.com/$repo" 'Green'
     }
 
@@ -160,6 +168,7 @@ function Publish-Source($repo, $message) {
     $topics = @{ names = @('twitch', 'twitch-chat', 'obs', 'obs-plugin', 'obs-studio', '7tv', 'rust', 'streaming', 'moderation', 'voice-assistant', 'gemini', 'overlay', 'polish') }
     Invoke-GhJson 'PUT' "repos/$repo/topics" $topics '.names | length' | Out-Null
     Say 'Opis i tematy repozytorium ustawione.' 'Green'
+    return $publishedHead
 }
 
 # Paczka „na komputer” (bez OBS): silnik + LiMBOCHAT.bat, który otwiera panel jako okno.

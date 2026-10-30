@@ -1,0 +1,12 @@
+name: Pomysł
+description: Zaproponuj funkcję lub usprawnienie.
+title: "[Pomysł] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Co chcesz usprawnić?
+      description: Opisz sytuację ze streama i to, jak aplikacja miałaby pomóc.
+    validations:
+      required: true

@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows — testy i kompilacja
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust stable
+        run: rustup update stable --no-self-update
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: windows-cargo-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '.cargo/config.toml') }}
+      - name: Testy silnika, aplikacji PC i wtyczki OBS
+        run: cargo +stable test --locked -p limbochat-obs -p limbochat -p limbochat-obs-launcher
+      - name: Składnia panelu
+        run: node --check obs-plugin/web/app.js
+      - name: Testy skryptów publikowania
+        shell: powershell
+        run: ./skrypty/testy.ps1

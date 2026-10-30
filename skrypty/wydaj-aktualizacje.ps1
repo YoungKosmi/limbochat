@@ -22,6 +22,13 @@ $version = (Read-Host "  Nowa wersja [Enter = $suggest]").Trim()
 if (-not $version) { $version = $suggest }
 if ($version -notmatch '^\d+\.\d+\.\d+$') { Fail 'Wersja musi wyglądać tak: 0.6.0' }
 if ([version]$version -le [version]$current) { Fail "Nowa wersja musi być wyższa niż $current." }
+# Nie nadpisuj istniejącego wydania ani tagu (również po nieudanej próbie publikacji).
+if (Get-Command gh -ErrorAction SilentlyContinue) {
+    if ((Invoke-Quiet { gh api "repos/$repo/git/ref/tags/v$version" }) -eq 0 -or
+        (Invoke-Quiet { gh release view "v$version" --repo $repo }) -eq 0) {
+        Fail "Tag lub wydanie v$version już istnieje. Wybierz inny numer wersji."
+    }
+}
 # Lista zmian: punkty z sekcji „## Następna wersja” w CHANGELOG.md trafiają do okienka
 # „Co nowego” po aktualizacji i do opisu wydania na GitHubie.
 $changelogPath = Join-Path $Root 'CHANGELOG.md'
@@ -93,13 +100,18 @@ New-BrowserPackage (Join-Path $out 'LiMBOCHAT-na-komputer.zip')
 $files = @((Join-Path $out $asset), (Join-Path $out "$asset.sig"), (Join-Path $out 'LiMBOCHAT-OBS.zip'), (Join-Path $out 'LiMBOCHAT-na-komputer.zip'))
 if (Get-Command gh -ErrorAction SilentlyContinue) {
     Ensure-RepoNotEmpty $repo
+    # Najpierw źródła, potem tag wskazujący dokładnie ten commit.
+    $sourceCommit = Publish-Source $repo "LiMBOCHAT $version — $($items[0] -replace '\*\*', '')"
+    $notesFile = Join-Path $out 'opis-wydania.md'
+    [IO.File]::WriteAllText($notesFile, $notes, $Utf8)
     Say 'Wysyłanie na GitHuba...' 'Cyan'
-    & gh release create "v$version" @files --repo $repo --title "LiMBOCHAT $version" --notes $notes
+    & gh release create "v$version" @files --repo $repo --target $sourceCommit --title "LiMBOCHAT $version" --notes-file $notesFile
     if ($LASTEXITCODE -ne 0) {
-        # Sprzątanie: nieudany szkic wydania i numer wersji (żeby ponowić z tym samym numerem).
-        Invoke-Quiet { gh release delete "v$version" --repo $repo --yes --cleanup-tag } | Out-Null
-        Fail 'GitHub odrzucił wydanie (komunikat powyżej). Wersja wróciła do poprzedniej — możesz spróbować ponownie.'
+        # Nie usuwaj zdalnego wydania: mogło powstać mimo zerwanego połączenia.
+        $script:Bumped = $false
+        Fail 'GitHub zgłosił błąd publikacji. Źródła są wysłane; sprawdź wydanie i tag na GitHubie przed ponowną próbą. Numer wersji został zachowany.'
     }
+    $script:Bumped = $false
     Write-Host ''
     Say '============================================================' 'Green'
     Say " Wydano LiMBOCHAT $version!" 'Green'
@@ -111,10 +123,6 @@ if (Get-Command gh -ErrorAction SilentlyContinue) {
     Say 'Otworzyłem stronę nowego wydania i folder z plikami.' 'Yellow'
     Say "Przeciągnij na stronę 4 pliki z folderu, wpisz opis z CHANGELOG.md (sekcja $version)" 'Yellow'
     Say 'i kliknij „Publish release”.' 'Yellow'
-}
-if (Get-Command gh -ErrorAction SilentlyContinue) {
-    $answer = Read-Host '  Wysłać też kod źródłowy tej wersji na GitHuba? (t/n)'
-    if ($answer -match '^[tTyY]') { Publish-Source $repo "LiMBOCHAT $version — $($items[0] -replace '\*\*', '')" }
 }
 Write-Host ''
 Say 'Wtyczki u Ciebie i znajomych pobiorą nową wersję w ciągu ok. 20 minut'

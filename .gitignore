@@ -8,3 +8,17 @@ aktualizacje-*.txt
 klucze-limboai.json
 import-keys.json
 LiMBOCHAT-na-komputer.zip
+
+# Lokalne narzędzia, kopie robocze i sekrety
+/work/
+/outputs/
+/.idea/
+/.vscode/
+.env
+.env.*
+*.pem
+*.pfx
+*.p12
+*.log
+*.tmp
+*.bak

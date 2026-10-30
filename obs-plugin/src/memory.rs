@@ -90,13 +90,20 @@ impl Memory {
             return;
         }
         let Some(path) = &self.path else { return };
-        let json = self.with(|m| serde_json::to_vec(m).unwrap_or_default());
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        let tmp = path.with_extension("json.tmp");
-        if std::fs::write(&tmp, json).is_ok() {
-            let _ = std::fs::rename(tmp, path);
+        let result = (|| -> anyhow::Result<()> {
+            let json = self.with(|m| serde_json::to_vec(m))?;
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            let tmp = path.with_extension("json.tmp");
+            std::fs::write(&tmp, json)?;
+            std::fs::rename(tmp, path)?;
+            Ok(())
+        })();
+        if let Err(error) = result {
+            // Nie zgub zmian po chwilowym błędzie dysku: następny zapis ponowi próbę.
+            self.touch();
+            tracing::warn!(%error, "Nie udało się zapisać pamięci widzów; ponowię zapis");
         }
     }
 
@@ -297,6 +304,31 @@ Odpowiedz WYŁĄCZNIE tablicą JSON: [{\"login\": \"nick\", \"fact\": \"...\"}].
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_save_is_retried_and_keeps_existing_notes() {
+        let dir = std::env::temp_dir().join(format!("limbochat-memory-{}-{}", std::process::id(), rand_core::RngCore::next_u64(&mut rand_core::OsRng)));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("memory.json");
+        let m = Memory { path: Some(path.clone()), ..Memory::in_memory() };
+        m.remember("kasia", "Kasia", "lubi koty", "panel");
+        m.save_if_dirty();
+        // Zablokuj plik tymczasowy katalogiem: pierwsza próba ma się nie udać.
+        let tmp = path.with_extension("json.tmp");
+        std::fs::create_dir(&tmp).unwrap();
+        m.remember("kasia", "Kasia", "ma psa Burka", "panel");
+        m.save_if_dirty();
+        assert!(m.dirty.load(Ordering::Relaxed));
+        let saved: HashMap<String, Viewer> = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["kasia"].notes.len(), 1);
+        std::fs::remove_dir(&tmp).unwrap();
+        m.save_if_dirty();
+        assert!(!m.dirty.load(Ordering::Relaxed));
+        let saved: HashMap<String, Viewer> = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["kasia"].notes.len(), 2);
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(dir).unwrap();
+    }
 
     #[test]
     fn remembers_dedupes_and_forgets() {

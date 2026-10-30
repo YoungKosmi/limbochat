@@ -12,6 +12,6 @@ Say 'Pliki lokalne (target, wydania, paczki, klucz podpisu) NIE są wysyłane.' 
 Write-Host ''
 $message = (Read-Host "  Opis zmian [Enter = LiMBOCHAT $version]").Trim()
 if (-not $message) { $message = "LiMBOCHAT $version" }
-Publish-Source $repo $message
+Publish-Source $repo $message | Out-Null
 Write-Host ''
 Start-Process "https://github.com/$repo"
