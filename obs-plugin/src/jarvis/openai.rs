@@ -92,7 +92,6 @@ pub async fn chat(http: &reqwest::Client, ep: &Endpoint<'_>, system: &str, histo
     }
     let resp = req.send().await.map_err(|e| anyhow!(connection_error(ep.base, &e)))?;
     let status = resp.status();
-    super::usage::record(super::usage::Kind::Custom, status.as_u16());
     let raw = resp.text().await.context("Brak odpowiedzi od modelu")?;
     let value: Value = serde_json::from_str(&raw).unwrap_or_else(|_| json!({ "error": { "message": raw.chars().take(200).collect::<String>() } }));
     if !status.is_success() {
@@ -120,7 +119,6 @@ pub async fn complete(http: &reqwest::Client, ep: &Endpoint<'_>, system: &str, p
     }
     let resp = req.send().await.map_err(|e| anyhow!(connection_error(ep.base, &e)))?;
     let status = resp.status();
-    super::usage::record(super::usage::Kind::Custom, status.as_u16());
     let value: Value = resp.json().await.unwrap_or(Value::Null);
     if !status.is_success() {
         return Err(anyhow!(describe_error(status.as_u16(), &value)));

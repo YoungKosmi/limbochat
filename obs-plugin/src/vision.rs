@@ -74,7 +74,6 @@ pub async fn analyze(
             .await
             .map_err(|_| "Nie udało się połączyć z Gemini.")?;
         let status = response.status();
-        crate::jarvis::usage::record(crate::jarvis::usage::Kind::Gemini, status.as_u16());
         let value: Value = response
             .json()
             .await
@@ -107,7 +106,6 @@ pub async fn analyze(
             .await
             .map_err(|_| "Brak połączenia z wybranym dostawcą AI.")?;
         let status = response.status();
-        crate::jarvis::usage::record(crate::jarvis::usage::Kind::Custom, status.as_u16());
         let value: Value = response
             .json()
             .await

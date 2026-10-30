@@ -9,25 +9,20 @@
 //! znaki przez potok konsoli to proszenie się o kłopoty):
 //! * `T <base64 UTF-8>` — powiedz tekst (przerywa poprzednią wypowiedź),
 //! * `S <base64 WAV>`   — zagraj dźwięk,
-//! * `P <base64 WAV>`   — zagraj gotową wypowiedź (głos Gemini; przerywa poprzednią),
 //! * `X`                — przestań mówić.
-//!
-//! Wypowiedzi Gemini powstają w chmurze z opóźnieniem, więc każda dostaje numer
-//! (`claim`): jeśli w międzyczasie Jarvis zaczął mówić coś innego albo został
-//! uciszony, spóźniony dźwięk nie jest grany.
 
 #[cfg(windows)]
 use std::io::Write;
 use std::{
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
     },
 };
 
 use base64::Engine;
 
-use super::{audio::encode_wav, tts::Speech};
+use super::audio::encode_wav;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Chime {
@@ -39,8 +34,6 @@ pub enum Chime {
 pub struct Voice {
     enabled: AtomicBool,
     volume: AtomicU8,
-    /// Numer bieżącej wypowiedzi — każda nowa (lub uciszenie) unieważnia poprzednie.
-    generation: AtomicU64,
     /// `Some(true/false)` gdy wiadomo, czy jest polski głos systemowy.
     polish: Arc<Mutex<Option<bool>>>,
     #[cfg(windows)]
@@ -52,7 +45,6 @@ impl Voice {
         Self {
             enabled: AtomicBool::new(enabled),
             volume:AtomicU8::new(volume.min(100)),
-            generation: AtomicU64::new(0),
             polish: Arc::new(Mutex::new(None)),
             #[cfg(windows)]
             process: Mutex::new(None),
@@ -73,40 +65,11 @@ impl Voice {
     pub fn set_volume(&self,volume:u8){self.volume.store(volume.min(100),Ordering::Relaxed);}
 
     pub fn say(&self, text: &str) {
-        let ticket = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        self.say_if(ticket, text);
-    }
-
-    /// Rezerwuje numer nowej wypowiedzi i ucisza bieżącą (głos Gemini jeszcze się generuje).
-    pub fn claim(&self) -> u64 {
-        let ticket = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
-        self.send("X");
-        ticket
-    }
-
-    fn current(&self, ticket: u64) -> bool {
-        self.enabled.load(Ordering::Relaxed) && self.generation.load(Ordering::SeqCst) == ticket
-    }
-
-    /// Głos systemowy, o ile wypowiedź `ticket` jest nadal aktualna.
-    pub fn say_if(&self, ticket: u64, text: &str) {
-        if !self.current(ticket) || text.trim().is_empty() {
+        if !self.enabled.load(Ordering::Relaxed) || text.trim().is_empty() {
             return;
         }
         let b64 = base64::engine::general_purpose::STANDARD.encode(text.as_bytes());
         self.send(&format!("V {}\nT {b64}",self.volume.load(Ordering::Relaxed)));
-    }
-
-    /// Gotowa wypowiedź (głos Gemini), o ile `ticket` jest nadal aktualny. `false` = nie zagrano.
-    pub fn play_speech(&self, ticket: u64, speech: &Speech) -> bool {
-        if !self.current(ticket) || speech.samples.is_empty() {
-            return false;
-        }
-        let gain = f32::from(self.volume.load(Ordering::Relaxed)) / 100.0;
-        let scaled: Vec<f32> = speech.samples.iter().map(|s| s * gain).collect();
-        let b64 = base64::engine::general_purpose::STANDARD.encode(encode_wav(&scaled, speech.rate));
-        self.send(&format!("P {b64}"));
-        true
     }
 
     pub fn chime(&self, chime: Chime) {
@@ -117,7 +80,6 @@ impl Voice {
     }
 
     pub fn stop(&self) {
-        self.generation.fetch_add(1, Ordering::SeqCst);
         self.send("X");
     }
 
@@ -172,7 +134,6 @@ $s.Volume = 100
 [Console]::Out.WriteLine("READY " + [bool]$v)
 [Console]::Out.Flush()
 $player = $null
-$speech = $null
 while ($true) {
   $line = [Console]::In.ReadLine()
   if ($line -eq $null) { break }
@@ -180,11 +141,10 @@ while ($true) {
   $cmd = $line.Substring(0, 1)
   $arg = if ($line.Length -gt 2) { $line.Substring(2) } else { '' }
   switch ($cmd) {
-    'T' { if ($speech) { $speech.Stop() }; $s.SpeakAsyncCancelAll(); $t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($arg)); [void]$s.SpeakAsync($t) }
+    'T' { $s.SpeakAsyncCancelAll(); $t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($arg)); [void]$s.SpeakAsync($t) }
     'V' { $s.Volume = [Math]::Max(0, [Math]::Min(100, [int]$arg)) }
     'S' { $ms = New-Object System.IO.MemoryStream(,[Convert]::FromBase64String($arg)); $player = New-Object System.Media.SoundPlayer($ms); $player.Play() }
-    'P' { $s.SpeakAsyncCancelAll(); if ($speech) { $speech.Stop() }; $ms = New-Object System.IO.MemoryStream(,[Convert]::FromBase64String($arg)); $speech = New-Object System.Media.SoundPlayer($ms); $speech.Play() }
-    'X' { $s.SpeakAsyncCancelAll(); if ($speech) { $speech.Stop() } }
+    'X' { $s.SpeakAsyncCancelAll() }
   }
 }
 "#;

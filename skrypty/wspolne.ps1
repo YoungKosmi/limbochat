@@ -117,88 +117,6 @@ function Invoke-GhJson($method, $endpoint, $body, $jq) {
     }
 }
 
-# ── Git: folder projektu zgodny z GitHubem ─────────────────────────────────
-# Publish-Source zastępuje kod na GitHubie zawartością folderu. Jeśli folder jest
-# klonem Gita, pilnujemy, żeby nie skasować zmian, których w nim jeszcze nie ma
-# (np. scalonego Pull Requesta), i żeby po wydaniu folder był znowu czysty.
-
-# git z PATH albo ten wbudowany w GitHub Desktop.
-function Find-Git {
-    $cmd = Get-Command git -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Source }
-    if (-not $env:LOCALAPPDATA) { return $null }
-    $desktop = Join-Path $env:LOCALAPPDATA 'GitHubDesktop'
-    if (-not (Test-Path $desktop)) { return $null }
-    Get-ChildItem $desktop -Directory -Filter 'app-*' -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending |
-        ForEach-Object { Join-Path $_.FullName 'resources\app\git\cmd\git.exe' } |
-        Where-Object { Test-Path $_ } |
-        Select-Object -First 1
-}
-
-# Uruchamia git w folderze projektu; błędy nie przerywają skryptu (Windows PowerShell 5.1).
-function Invoke-Git([string[]]$gitArgs) {
-    $old = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    $out = $null
-    try { $out = & $script:Git -C $Root @gitArgs 2>$null } catch { }
-    $code = $LASTEXITCODE
-    $ErrorActionPreference = $old
-    [pscustomobject]@{ Code = $code; Out = ("$out").Trim() }
-}
-
-# $true = folder projektu jest głównym katalogiem repozytorium Git i mamy program git.
-function Use-Git {
-    if ($null -ne $script:GitState) { return $script:GitState }
-    $script:GitState = $false
-    if (-not (Test-Path (Join-Path $Root '.git'))) { return $false }
-    $script:Git = Find-Git
-    if (-not $script:Git) {
-        Say 'Nie znalazłem programu git (ani w GitHub Desktop) — pomijam sprawdzanie zgodności z GitHubem.' 'Yellow'
-        return $false
-    }
-    $cdup = Invoke-Git @('rev-parse', '--show-cdup')
-    $script:GitState = ($cdup.Code -eq 0 -and -not $cdup.Out)
-    return $script:GitState
-}
-
-# Przed wydaniem: gałąź main, brak niezapisanych plików, wszystko z GitHuba (git pull).
-function Sync-BeforeRelease {
-    if (-not (Use-Git)) { return }
-    $branch = (Invoke-Git @('rev-parse', '--abbrev-ref', 'HEAD')).Out
-    if ($branch -ne 'main') {
-        Fail "Folder jest na gałęzi $branch, a nie main. Przełącz (GitHub Desktop: Current branch → main) i uruchom ponownie."
-    }
-    if ((Invoke-Git @('status', '--porcelain')).Out) {
-        Fail 'W folderze są niezapisane zmiany (GitHub Desktop: zakładka Changes). Zapisz je (Commit + Push) albo zapytaj, zanim wydasz wersję.'
-    }
-    Say 'Pobieranie zmian z GitHuba (git pull)...' 'Cyan'
-    if ((Invoke-Git @('pull', '--ff-only', '--quiet', 'origin', 'main')).Code -ne 0) {
-        Fail 'Nie udało się pobrać zmian z GitHuba (git pull). Sprawdź internet i GitHub Desktop, potem spróbuj ponownie.'
-    }
-}
-
-# Przed wysłaniem kodu: commit z GitHuba ($sha) musi już być w folderze, inaczej jego zmiany by zniknęły.
-function Assert-SourceIncludes($sha) {
-    if (-not (Use-Git)) { return }
-    Invoke-Git @('fetch', '--quiet', 'origin') | Out-Null
-    if ((Invoke-Git @('merge-base', '--is-ancestor', $sha, 'HEAD')).Code -ne 0) {
-        Fail 'Na GitHubie są zmiany, których nie ma w folderze (np. scalony Pull Request). Zrób najpierw Pull origin w GitHub Desktop — inaczej wysłanie kodu by je skasowało.'
-    }
-}
-
-# Po wysłaniu kodu: GitHub ma commit $sha z dokładnie tą zawartością folderu — przestaw na niego
-# historię (pliki zostają nietknięte), żeby folder był czysty i zgodny z GitHubem.
-function Sync-AfterPublish($sha) {
-    if (-not (Use-Git)) { return }
-    Invoke-Git @('fetch', '--quiet', 'origin') | Out-Null
-    if ((Invoke-Git @('diff', '--quiet', $sha, '--')).Code -ne 0) {
-        Say 'Folder różni się od wysłanego kodu — nie ruszam go. Zrób Pull origin w GitHub Desktop.' 'Yellow'
-        return
-    }
-    if ((Invoke-Git @('reset', '--quiet', $sha)).Code -eq 0) { Say 'Folder zgodny z GitHubem.' 'Green' }
-}
-
 # Wysyła cały kod jako jeden commit na główną gałąź + ładny opis repozytorium.
 function Publish-Source($repo, $message) {
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
@@ -208,7 +126,6 @@ function Publish-Source($repo, $message) {
     $branch = (& gh api "repos/$repo" --jq .default_branch).Trim()
     $head = (& gh api "repos/$repo/git/ref/heads/$branch" --jq .object.sha).Trim()
     $baseTree = (& gh api "repos/$repo/git/commits/$head" --jq .tree.sha).Trim()
-    Assert-SourceIncludes $head
 
     $files = @(Get-SourceFiles)
     Say "Wysyłanie kodu: $($files.Count) plików..." 'Cyan'

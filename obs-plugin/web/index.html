@@ -161,15 +161,6 @@
       <label class="switch"><input type="checkbox" id="jv-voice"><span></span>Odpowiada głosem</label>
       <label class="field">Głośność głosu Limbo <input id="jv-volume" type="range" min="0" max="100" value="100"><span id="jv-volume-value">100%</span></label>
       <div class="field">
-        <span class="label">Głos LimboAI</span>
-        <div class="seg" id="jv-voice-engine">
-          <button data-engine="gemini">Naturalny (Gemini)</button>
-          <button data-engine="system">Systemowy Windows</button>
-        </div>
-        <select id="jv-tts-voice"></select>
-        <p class="hint" id="jv-voice-engine-note"></p>
-      </div>
-      <div class="field">
         <span class="label">Przycisk do mówienia</span>
         <div class="row-inline"><span class="keys" id="jv-keys"></span><button class="btn-ghost small" id="jv-record">Zmień</button></div>
         <div class="seg" id="jv-talk">
@@ -249,10 +240,6 @@
         <span class="label">Klucz Groq <b class="key-state"></b></span>
         <div class="row-inline"><input type="password" placeholder="wklej klucz API…" autocomplete="off" spellcheck="false"><button class="btn-accent small save">Zapisz</button></div>
         <p class="hint">Rozpoznawanie mowy (szybkie i dokładne). Bez niego LimboAI użyje Gemini. <a href="#" data-open="https://console.groq.com/keys">Utwórz klucz w Groq</a> · <a href="#" class="remove">usuń</a></p>
-      </div>
-      <div class="field">
-        <span class="label">Zużycie AI dzisiaj</span>
-        <p class="hint" id="jv-usage"></p>
       </div>
       <p class="hint warn" id="jv-voice-note" hidden>Brak polskiego głosu w Windows — LimboAI mówi głosem domyślnym. Dodaj go: Ustawienia Windows → Czas i język → Mowa → Dodaj głosy → Polski.</p>
       <p class="hint">Klucze są zapisywane w sejfie Windows (Menedżer poświadczeń), nie w pliku ustawień. Panel ich nie odczytuje.</p>
