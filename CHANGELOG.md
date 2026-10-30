@@ -6,6 +6,8 @@ pokazuje się w panelu w okienku „Co nowego”.
 
 ## Następna wersja
 
+## 0.7.0 — 2026-10-30
+
 - **LiMBO Studio** — nowy panel z przycisku ✦ przy czacie: momenty, głosowania, gry, obraz, karta widza i profile.
 - **Karta moderacji widza** — ostatnie wiadomości, lokalna historia kar, prywatne notatki osobne dla kanału oraz szybkie timeouty/ban/unban.
 - **Panel ankiet i predykcji** — wyniki, ostatnie głosowania, tworzenie i kończenie, wskazanie zwycięzcy predykcji, wynik na overlayu i ogłoszenie przez Limbo.
