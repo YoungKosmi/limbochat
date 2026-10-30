@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>LiMBO Studio</title>
+    <link rel="stylesheet" href="/studio.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside>
+        <a class="brand" href="/studio">LiMBO<span>STUDIO</span></a>
+        <p class="eyebrow">TWÓJ STREAM, TWOJE SHOW</p>
+        <nav id="navigation">
+          <button data-tab="moments" class="active">✦ Momenty i powtórki</button
+          ><button data-tab="polls">◴ Ankiety i predykcje</button
+          ><button data-tab="quiz">? Teleturniej</button
+          ><button data-tab="boss">♜ Czat kontra boss</button
+          ><button data-tab="vision">◉ Limbo widzi grę</button
+          ><button data-tab="viewer">☷ Karta widza</button
+          ><button data-tab="profiles">◇ Profile streama</button
+          ><button data-tab="questions">▤ Baza pytań</button>
+        </nav>
+        <div class="aside-bottom">
+          <span id="connection" class="pill">Łączenie…</span>
+          <p id="account" class="muted"></p>
+          <a href="/" target="_blank" rel="noopener">Otwórz czat ↗</a>
+        </div>
+      </aside>
+      <main>
+        <header>
+          <div>
+            <div class="eyebrow">CENTRUM DOWODZENIA</div>
+            <h1 id="page-title">Momenty i powtórki</h1>
+          </div>
+          <div>
+            <span id="demo-mode" class="pill" hidden>TRYB DEMO</span>
+            <span id="obs-state" class="pill">OBS —</span>
+          </div>
+        </header>
+        <div id="toast" role="status" hidden></div>
+        <section data-panel="moments">
+          <p class="lead">
+            Zapisz akcję, zanim zniknie w historii. Wróć do niej po streamie
+            albo pokaż ją od razu widzom.
+          </p>
+          <div class="grid">
+            <article class="card">
+              <h2>Złap ten moment</h2>
+              <label
+                >Krótki opis<input
+                  id="moment-label"
+                  maxlength="140"
+                  placeholder="Ale była akcja!"
+              /></label>
+              <div class="actions">
+                <button id="moment-save" class="primary">
+                  ✦ Zapisz znacznik</button
+                ><button id="replay-save" class="secondary">
+                  Zapisz też powtórkę OBS
+                </button>
+              </div>
+              <p class="hint">
+                Zapisujemy czas streama i ostatnie 20 wiadomości. Powtórka
+                wymaga aktywnego bufora powtórek w OBS.
+              </p>
+            </article>
+            <article class="card">
+              <h2>Scena dla powtórek</h2>
+              <label
+                >Źródło multimediów OBS<input
+                  id="replay-source"
+                  maxlength="200"
+                  placeholder="np. Powtórka"
+              /></label>
+              <div class="actions">
+                <button id="replay-source-save">Zapisz źródło</button
+                ><button id="replay-stop">Zakończ powtórkę</button>
+              </div>
+              <p class="hint">
+                Dodaj w OBS „Źródło multimediów” na scenie gry. Studio podstawi
+                nagranie, pokaże źródło i przywróci jego ustawienia po
+                odtworzeniu.
+              </p>
+            </article>
+          </div>
+          <div class="section-head">
+            <h2>Oś momentów</h2>
+            <button id="moments-copy">Kopiuj listę do montażu</button>
+          </div>
+          <div id="moments-list" class="stack"></div>
+        </section>
+        <section data-panel="polls" hidden>
+          <p class="lead">
+            Aktualne wyniki i ostatnie głosowania na kanale zalogowanego
+            nadawcy.
+          </p>
+          <div class="actions">
+            <button id="ballots-refresh" class="primary">Odśwież wyniki</button
+            ><label class="check"
+              ><input type="checkbox" id="ballots-auto" />Odświeżaj co 15
+              sekund</label
+            ><button id="ballot-hide">Ukryj wynik na overlayu</button>
+          </div>
+          <p class="hint" id="ballots-status">
+            Historia zostaje na komputerze. Twitch może wymagać konta
+            uprawnionego do ankiet/predykcji i ponownego logowania.
+          </p>
+          <div class="grid">
+            <article class="card">
+              <h2>Nowe głosowanie</h2>
+              <label
+                >Rodzaj<select id="ballot-kind">
+                  <option value="poll">Ankieta</option>
+                  <option value="prediction">Predykcja</option>
+                </select></label
+              ><label>Tytuł<input id="ballot-title" maxlength="60" /></label
+              ><label
+                >Odpowiedzi — po jednej w wierszu<textarea
+                  id="ballot-choices"
+                  rows="4"
+                  placeholder="Tak&#10;Nie"
+                ></textarea></label
+              ><label
+                >Czas w sekundach<input
+                  id="ballot-seconds"
+                  type="number"
+                  value="60"
+                  min="15"
+                  max="1800" /></label
+              ><button id="ballot-create" class="primary">
+                Utwórz na Twitchu
+              </button>
+            </article>
+            <article class="card">
+              <h2>Sterowanie</h2>
+              <p class="hint">
+                Działania dotyczą ostatniej aktywnej ankiety/predykcji. Przed
+                zakończeniem sprawdź aktualny tytuł na liście.
+              </p>
+              <button id="poll-end">Zakończ ankietę</button>
+              <hr />
+              <div class="actions">
+                <button id="prediction-lock">Zablokuj obstawianie</button
+                ><button id="prediction-cancel">Anuluj i zwróć punkty</button>
+              </div>
+              <label
+                >Zwycięska odpowiedź<select
+                  id="prediction-winner"
+                ></select></label
+              ><button id="prediction-resolve" class="primary">
+                Rozstrzygnij predykcję
+              </button>
+            </article>
+          </div>
+          <h2>Ankiety</h2>
+          <div id="polls-list" class="stack"></div>
+          <h2>Predykcje</h2>
+          <div id="predictions-list" class="stack"></div>
+          <div class="overlay-link">
+            Wyniki dla widzów: <code id="poll-overlay-url"></code
+            ><button data-copy-url="ballot">Kopiuj adres</button>
+          </div>
+        </section>
+        <section data-panel="quiz" hidden>
+          <p class="lead">
+            Limbo prowadzi, widzowie odpowiadają na czacie. Pierwsza odpowiedź
+            się liczy, a szybkość daje dodatkowe punkty.
+          </p>
+          <div class="grid">
+            <article class="card">
+              <h2>Rozpocznij teleturniej</h2>
+              <label
+                >Kanał<select
+                  id="quiz-channel"
+                  class="channel-select"
+                ></select></label
+              ><label
+                >Czas pytania (10–120 s)<input
+                  id="quiz-seconds"
+                  type="number"
+                  min="10"
+                  max="120"
+                  value="30" /></label
+              ><label class="check"
+                ><input id="quiz-voice" type="checkbox" checked />Limbo czyta
+                pytania i wyniki</label
+              >
+              <p id="question-count" class="hint"></p>
+              <div class="actions">
+                <button id="quiz-start" class="primary">Rozpocznij</button
+                ><button id="quiz-next">Odkryj wynik / następne pytanie</button
+                ><button id="quiz-stop">Zakończ i ukryj</button>
+              </div>
+              <p class="hint">
+                Widz odpowiada literą A–F lub komendą <code>!odp A</code>.
+                Zestaw zmienisz w „Baza pytań”. Głos wymaga włączonego LimboAI.
+              </p>
+            </article>
+            <article class="card live-card" id="quiz-live"></article>
+          </div>
+          <div class="overlay-link">
+            Overlay teleturnieju: <code id="quiz-overlay-url"></code
+            ><button data-copy-url="quiz">Kopiuj adres</button>
+          </div>
+        </section>
+        <section data-panel="boss" hidden>
+          <p class="lead">
+            Czat łączy siły. Poprawna odpowiedź zadaje 10 obrażeń i otwiera
+            następne wyzwanie.
+          </p>
+          <div class="grid">
+            <article class="card">
+              <h2>Przywołaj bossa</h2>
+              <label
+                >Nazwa<input
+                  id="boss-name"
+                  maxlength="60"
+                  value="Król Lagów" /></label
+              ><label
+                >Kanał<select id="boss-channel" class="channel-select"></select
+              ></label>
+              <div class="grid compact">
+                <label
+                  >Życie (20–1000)<input
+                    id="boss-hp"
+                    type="number"
+                    min="20"
+                    max="1000"
+                    value="100" /></label
+                ><label
+                  >Czas walki (30–600 s)<input
+                    id="boss-seconds"
+                    type="number"
+                    min="30"
+                    max="600"
+                    value="180"
+                /></label>
+              </div>
+              <label class="check"
+                ><input id="boss-voice" type="checkbox" checked />Limbo ogłasza
+                start i finał</label
+              ><label
+                >Scena OBS po zwycięstwie (opcjonalnie)<select
+                  id="boss-victory-scene"
+                >
+                  <option value="">Bez zmiany sceny</option>
+                </select></label
+              >
+              <div class="actions">
+                <button id="boss-start" class="primary">Rozpocznij walkę</button
+                ><button id="boss-stop">Zakończ i ukryj</button>
+              </div>
+              <p class="hint">
+                Komenda widza: <code>!atak A</code>. Błędny atak blokuje kolejną
+                próbę do następnego wyzwania. Pytania pochodzą z Twojej bazy.
+              </p>
+            </article>
+            <article class="card live-card" id="boss-live"></article>
+          </div>
+          <div class="overlay-link">
+            Arena bossa: <code id="boss-overlay-url"></code
+            ><button data-copy-url="boss">Kopiuj adres</button>
+          </div>
+        </section>
+        <section data-panel="vision" hidden>
+          <p class="lead">
+            Jeden wybrany kadr, jedna odpowiedź. Limbo może skomentować akcję
+            lub pomóc z widoczną zagadką.
+          </p>
+          <div class="grid">
+            <article class="card">
+              <h2>Co Limbo może oglądać?</h2>
+              <button id="vision-sources">Pobierz źródła z OBS</button
+              ><label
+                >Wybrane źródło<select id="vision-source">
+                  <option value="">Wybierz źródło</option>
+                </select></label
+              ><label class="check"
+                ><input id="vision-enabled" type="checkbox" />Zezwalam na
+                analizę kadru przez wybranego dostawcę AI</label
+              ><label class="check"
+                ><input id="vision-speak" type="checkbox" />Odczytaj odpowiedź
+                głosem Limbo</label
+              ><button id="vision-settings-save">Zapisz ustawienia</button>
+              <p class="hint">
+                Kadr trafia do dostawcy modelu ustawionego w LimboAI dopiero po
+                „Analizuj ten kadr”. Obraz nie jest zapisywany na dysku. Model
+                musi obsługiwać obrazy.
+              </p>
+              <button id="vision-capture" class="primary">
+                1. Pobierz podgląd kadru
+              </button>
+            </article>
+            <article class="card">
+              <h2>Podgląd przed analizą</h2>
+              <img id="vision-preview" alt="Kadr wybrany do analizy" hidden />
+              <p id="vision-empty" class="empty">
+                Najpierw wybierz źródło i pobierz kadr.
+              </p>
+              <label
+                >O co chcesz zapytać?<textarea
+                  id="vision-question"
+                  maxlength="500"
+                  rows="3"
+                >
+Co dzieje się w tej grze? Skomentuj krótko i po polsku.</textarea
+                ></label
+              ><button id="vision-analyze" class="primary" disabled>
+                2. Analizuj ten kadr
+              </button>
+              <p class="hint">
+                Odpowiedź będzie widoczna także na overlayu Limbo. Podgląd kadru
+                wygasa po 2 minutach.
+              </p>
+            </article>
+          </div>
+          <article id="vision-answer" class="card" hidden></article>
+        </section>
+        <section data-panel="viewer" hidden>
+          <p class="lead">
+            Wiadomości, zarejestrowane działania moderatorskie i prywatne
+            notatki dla danego kanału.
+          </p>
+          <article class="card">
+            <div class="grid compact">
+              <label
+                >Kanał<select
+                  id="viewer-channel"
+                  class="channel-select"
+                ></select></label
+              ><label
+                >Nick<input
+                  id="viewer-login"
+                  maxlength="25"
+                  placeholder="nick_widza"
+              /></label>
+            </div>
+            <button id="viewer-load" class="primary">Otwórz kartę widza</button>
+            <p class="hint">
+              Historia zbiera się od tej wersji aplikacji. Obejmuje wiadomości i
+              zdarzenia otrzymane przez klienta, nie pełne archiwum Twitcha.
+            </p>
+          </article>
+          <div id="viewer-content" hidden>
+            <div class="grid">
+              <article class="card">
+                <h2>Notatki moderatorskie</h2>
+                <textarea id="viewer-notes" rows="6" maxlength="2000"></textarea
+                ><button id="viewer-notes-save">
+                  Zapisz notatki dla tego kanału
+                </button>
+                <h3>Szybka moderacja</h3>
+                <div id="viewer-actions" class="actions"></div>
+              </article>
+              <article class="card">
+                <h2>Historia moderacji</h2>
+                <div id="viewer-history" class="stack"></div>
+              </article>
+            </div>
+            <article class="card">
+              <h2>Ostatnie wiadomości</h2>
+              <div id="viewer-messages" class="stack"></div>
+            </article>
+          </div>
+        </section>
+        <section data-panel="profiles" hidden>
+          <p class="lead">
+            Granie, Just Chatting, reakcje — przełącz styl, alerty, overlay i
+            ustawienia LimboAI jednym kliknięciem.
+          </p>
+          <div class="grid">
+            <article class="card">
+              <h2>Zapisz obecny zestaw</h2>
+              <label
+                >Nazwa profilu<input
+                  id="profile-name"
+                  maxlength="40"
+                  placeholder="np. Wieczorne granie" /></label
+              ><button id="profile-save" class="primary">
+                Zapisz bieżące ustawienia
+              </button>
+              <p class="hint">
+                Profil nie kopiuje tokenów, kluczy API, logowania Twitcha,
+                otwartych kanałów ani hasła OBS.
+              </p>
+            </article>
+            <article class="card">
+              <h2>Twoje profile</h2>
+              <p id="active-profile" class="hint"></p>
+              <div id="profiles-list" class="stack"></div>
+            </article>
+          </div>
+        </section>
+        <section data-panel="questions" hidden>
+          <p class="lead">
+            Własne pytania o gry lub Twój kanał. Z tej samej bazy korzysta
+            teleturniej i boss.
+          </p>
+          <div class="grid">
+            <article class="card">
+              <h2>Dodaj pytanie</h2>
+              <label>Pytanie<input id="question-text" maxlength="240" /></label
+              ><label
+                >Odpowiedzi — po jednej w wierszu<textarea
+                  id="question-choices"
+                  rows="6"
+                  placeholder="Pierwsza odpowiedź&#10;Druga odpowiedź"
+                ></textarea></label
+              ><label
+                >Poprawna odpowiedź<select id="question-correct">
+                  <option value="0">A — pierwsza</option>
+                  <option value="1">B — druga</option>
+                  <option value="2">C — trzecia</option>
+                  <option value="3">D — czwarta</option>
+                  <option value="4">E — piąta</option>
+                  <option value="5">F — szósta</option>
+                </select></label
+              ><button id="question-add">Dodaj do zestawu</button>
+              <hr />
+              <div class="actions">
+                <button id="questions-save" class="primary">
+                  Zapisz zestaw</button
+                ><button id="questions-revert">Przywróć zapisane</button>
+              </div>
+              <p class="hint">
+                Poprawne odpowiedzi pozostają w panelu prowadzącego. Overlay
+                ujawnia wynik dopiero po zakończeniu pytania.
+              </p>
+            </article>
+            <article class="card">
+              <h2>Zestaw prowadzącego</h2>
+              <div id="questions-list" class="stack"></div>
+            </article>
+          </div>
+        </section>
+        <footer>
+          LiMBO Studio <span id="version"></span> · Overlay jako źródło
+          przeglądarki OBS: 1280 × 720, przezroczyste tło.
+        </footer>
+      </main>
+    </div>
+    <script src="/studio.js"></script>
+  </body>
+</html>

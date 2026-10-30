@@ -179,6 +179,7 @@ pub fn parse_accent(s: &str) -> Option<String> {
 }
 
 pub fn data_dir() -> Option<PathBuf> {
+    if let Some(path)=std::env::var_os("LIMBOCHAT_DATA_DIR").filter(|path|!path.is_empty()){return Some(PathBuf::from(path));}
     directories::BaseDirs::new().map(|b| b.config_dir().join("LiMBOCHAT"))
 }
 

@@ -410,6 +410,7 @@ fn send_message(svc: &Services, state: &mut State, channel: ChannelRef, text: St
 
 fn moderate(svc: &Services, cmd: Command) {
     let svc = svc.clone();
+    let unban=match &cmd{Command::Unban{channel,login,..}=>Some((channel.login.clone(),login.clone())),_=>None};
     tokio::spawn(async move {
         let helix = &svc.helix;
         // Sukces bana/timeoutu/usunięcia potwierdzi IRC (CLEARCHAT/CLEARMSG),
@@ -436,6 +437,7 @@ fn moderate(svc: &Services, cmd: Command) {
 
         match result {
             Ok(()) => {
+                if let Some((channel,login))=unban{svc.ui.send(UiEvent::Unbanned{channel,login});}
                 if let Some(text) = confirmation {
                     svc.ui.send(UiEvent::Notice { channel: Some(channel.login), text });
                 }

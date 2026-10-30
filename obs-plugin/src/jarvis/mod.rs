@@ -65,6 +65,7 @@ pub const MODELS: &[(&str, &str)] = &[
 pub struct JarvisConfig {
     pub enabled: bool,
     pub voice: bool,
+    pub voice_volume:u8,
     pub hotkey: Vec<String>,
     pub mic: Option<String>,
     pub model: String,
@@ -90,6 +91,7 @@ impl Default for JarvisConfig {
         Self {
             enabled: true,
             voice: true,
+            voice_volume:100,
             hotkey: vec!["Shift".into(), "Z".into(), "X".into()],
             mic: None,
             model: MODELS[0].0.into(),
@@ -374,7 +376,7 @@ pub fn spawn(
         helix: helix.clone(),
         events,
         hub: hub.clone(),
-        voice: Voice::new(config.voice),
+        voice: Voice::new(config.voice,config.voice_volume),
         status,
         brain: tokio::sync::Mutex::new(Brain {
             executor: tools::Executor::new(helix, tools::Local { hub: Some(hub.clone()), reminders: Some(reminder_tx), obs, memory }),
@@ -466,6 +468,7 @@ pub fn spawn(
                 Cmd::SetConfig(config) => {
                     hotkey.set(active_combo(&config));
                     shared.voice.set_enabled(config.voice);
+                    shared.voice.set_volume(config.voice_volume);
                     let previous = std::mem::replace(&mut shared.status.lock().unwrap_or_else(|e| e.into_inner()).config, config.clone());
                     let wake_changed = previous.wake_word != config.wake_word
                         || previous.mic != config.mic
@@ -1214,6 +1217,7 @@ Zasady:
 - OBS: scena → obs_switch_scene (nazwę dopasuj do listy scen), mikrofon/dźwięk → obs_set_mute, pokaż/schowaj kamerkę lub inne źródło → obs_set_source_visible, nagrywanie → obs_recording, „zapisz powtórkę/to było dobre” → obs_save_replay. Start i koniec streama (obs_streaming) wymagają potwierdzenia.
 - Pamięć o widzach: „zapamiętaj, że X…” → remember_viewer; „zapomnij…” → forget_viewer; „co wiesz o X?” / „kto to X?” → viewer_info. Korzystaj z tego, co pamiętasz, ale nie zdradzaj prywatnych notatek na głos bez pytania.
 - „Jakie są wyniki ankiety?”, „kto wygrał ankietę?” → poll_results; o predykcję → prediction_results. Działa też po zakończeniu — zawsze sprawdź narzędziem, zanim powiesz, że ankiety nie było. Podaj zwycięzcę i procenty.
+- „Zapamiętaj ten moment”, „zapisz znacznik”, „ale była akcja” → mark_moment. To znacznik do montażu, nie notatka o widzu. „Zapisz powtórkę” → obs_save_replay; zapis jest potwierdzony dopiero zdarzeniem OBS.
 - Użytkownik woła Cię „LimboAI”, „Limbo”, „Hej Limbo” albo „Jarvis” — to imiona dla Ciebie, nie komendy.
 - Twoje odpowiedzi mogą być widoczne na streamie (overlay) — bądź kulturalny.
 - Jeśli wypowiedź nie ma sensu (błąd rozpoznawania), poproś o powtórzenie.

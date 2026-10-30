@@ -24,10 +24,13 @@ Używaj aktualnego stabilnego Rusta, GitHub CLI oraz Visual Studio Build Tools z
 ```powershell
 cargo test --locked -p limbochat-obs -p limbochat -p limbochat-obs-launcher
 node --check obs-plugin/web/app.js
+node --check obs-plugin/web/studio.js
+cargo build --locked -p limbochat-obs --bin limbochat-engine
+node tests/studio-e2e.mjs
 powershell -NoProfile -ExecutionPolicy Bypass -File skrypty/testy.ps1
 ```
 
-CI wykonuje te kontrole na Windows przy pushu do `main` i dla pull requestów. Nie łączy się z kontem Twitch, mikrofonem ani OBS.
+CI wykonuje te kontrole na Windows przy pushu do `main` i dla pull requestów. Test Studio wymaga Node.js 22 lub nowszego i używa lokalnych atrap OBS oraz dostawcy AI, z osobnym katalogiem danych. Nie łączy się z kontem Twitch, mikrofonem ani prawdziwym OBS i nie zużywa płatnego API.
 
 IRC korzysta z systemowego TLS (`native-tls`; na Windows Schannel i magazyn certyfikatów systemu), aby nie wciągać przestarzałej gałęzi rustls z `twitch-irc` 5. HTTP i pozostałe WebSockety używają aktualnej gałęzi rustls z `Cargo.lock`. Na Linuxie kompilacja IRC wymaga bibliotek deweloperskich OpenSSL. Ręczny test samego połączenia TLS, bez logowania i wysyłania wiadomości: `cargo test --locked -p limbochat-obs --lib twitch_tls_handshake -- --ignored`.
 

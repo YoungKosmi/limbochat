@@ -16,7 +16,7 @@ use std::io::Write;
 use std::{
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
     },
 };
 
@@ -33,6 +33,7 @@ pub enum Chime {
 
 pub struct Voice {
     enabled: AtomicBool,
+    volume: AtomicU8,
     /// `Some(true/false)` gdy wiadomo, czy jest polski głos systemowy.
     polish: Arc<Mutex<Option<bool>>>,
     #[cfg(windows)]
@@ -40,9 +41,10 @@ pub struct Voice {
 }
 
 impl Voice {
-    pub fn new(enabled: bool) -> Self {
+    pub fn new(enabled: bool,volume:u8) -> Self {
         Self {
             enabled: AtomicBool::new(enabled),
+            volume:AtomicU8::new(volume.min(100)),
             polish: Arc::new(Mutex::new(None)),
             #[cfg(windows)]
             process: Mutex::new(None),
@@ -60,12 +62,14 @@ impl Voice {
         *self.polish.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    pub fn set_volume(&self,volume:u8){self.volume.store(volume.min(100),Ordering::Relaxed);}
+
     pub fn say(&self, text: &str) {
         if !self.enabled.load(Ordering::Relaxed) || text.trim().is_empty() {
             return;
         }
         let b64 = base64::engine::general_purpose::STANDARD.encode(text.as_bytes());
-        self.send(&format!("T {b64}"));
+        self.send(&format!("V {}\nT {b64}",self.volume.load(Ordering::Relaxed)));
     }
 
     pub fn chime(&self, chime: Chime) {
@@ -138,6 +142,7 @@ while ($true) {
   $arg = if ($line.Length -gt 2) { $line.Substring(2) } else { '' }
   switch ($cmd) {
     'T' { $s.SpeakAsyncCancelAll(); $t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($arg)); [void]$s.SpeakAsync($t) }
+    'V' { $s.Volume = [Math]::Max(0, [Math]::Min(100, [int]$arg)) }
     'S' { $ms = New-Object System.IO.MemoryStream(,[Convert]::FromBase64String($arg)); $player = New-Object System.Media.SoundPlayer($ms); $player.Play() }
     'X' { $s.SpeakAsyncCancelAll() }
   }

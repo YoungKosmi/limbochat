@@ -7,6 +7,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
+$("studio-btn").addEventListener("click",()=>send({c:"open",url:`http://${location.host}/studio`}));
 const MAX_DOM_MESSAGES = 400;
 const RATE_WINDOW_MS = 10_000;
 const TIMEOUTS = [["1 min", 60], ["10 min", 600], ["1 h", 3600], ["24 h", 86400], ["7 dni", 604800]];
@@ -958,6 +959,8 @@ function openUserMenu(event, ch, m, row) {
   mem.textContent = "🧠 …";
   mem.addEventListener("click", (e) => e.stopPropagation());
   menu.append(mem, sep());
+  const studioViewer=document.createElement("button");studioViewer.className="item";studioViewer.textContent="Historia moderacji i wiadomości";
+  studioViewer.onclick=()=>{const url=new URL("/studio",location.href);url.searchParams.set("channel",ch.login);url.searchParams.set("login",m.login);send({c:"open",url:url.href});closePopovers();};menu.append(studioViewer);
   send({ c: "memory_get", login: m.login });
 
   const item = (icon, label, onClick, cls = "") => {
@@ -2179,6 +2182,7 @@ function renderJarvisSettings() {
   const c = j.config;
   $("jv-enabled").checked = c.enabled;
   $("jv-voice").checked = c.voice;
+  $("jv-volume").value=c.voice_volume??100;$("jv-volume-value").textContent=`${c.voice_volume??100}%`;
   if (!hotkeyRec) renderKeys(c.hotkey);
   const hold = c.talk_mode === "hold";
   for (const b of $("jv-talk").children) b.classList.toggle("on", b.dataset.mode === (hold ? "hold" : "toggle"));
@@ -2365,6 +2369,8 @@ document.addEventListener("keyup", (e) => {
 $("jv-record").addEventListener("click", () => (hotkeyRec ? stopHotkeyRecord() : startHotkeyRecord()));
 $("jv-enabled").addEventListener("change", (e) => saveJarvis({ enabled: e.target.checked }));
 $("jv-voice").addEventListener("change", (e) => saveJarvis({ voice: e.target.checked }));
+$("jv-volume").addEventListener("input",e=>$("jv-volume-value").textContent=`${e.target.value}%`);
+$("jv-volume").addEventListener("change",e=>saveJarvis({voice_volume:Number(e.target.value)}));
 $("jv-mic").addEventListener("change", (e) => saveJarvis({ mic: e.target.value || null }));
 $("jv-model").addEventListener("change", (e) => saveJarvis({ model: e.target.value }));
 for (const b of $("jv-talk").children) b.addEventListener("click", () => saveJarvis({ talk_mode: b.dataset.mode }));

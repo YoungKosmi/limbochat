@@ -35,6 +35,7 @@ pub enum UiEvent {
     Badges { channel: Option<String>, map: Arc<BadgeMap> },
     /// `channel == None` — komunikat ogólny, pokazywany w aktywnej zakładce.
     Notice { channel: Option<String>, text: String },
+    Unbanned {channel:String,login:String},
     Error { channel: Option<String>, text: String },
     /// Bitsy, suby, gifty, raidy, follow, nagrody za punkty — „alerty” na czacie.
     Alert(Box<ChatAlert>),

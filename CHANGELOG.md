@@ -6,6 +6,17 @@ pokazuje się w panelu w okienku „Co nowego”.
 
 ## Następna wersja
 
+- **LiMBO Studio** — nowy panel z przycisku ✦ przy czacie: momenty, głosowania, gry, obraz, karta widza i profile.
+- **Karta moderacji widza** — ostatnie wiadomości, lokalna historia kar, prywatne notatki osobne dla kanału oraz szybkie timeouty/ban/unban.
+- **Panel ankiet i predykcji** — wyniki, ostatnie głosowania, tworzenie i kończenie, wskazanie zwycięzcy predykcji, wynik na overlayu i ogłoszenie przez Limbo.
+- **Znaczniki momentów** — czas streama, opis, fragment czatu i lista do montażu; działa też komenda głosowa „zapamiętaj ten moment”.
+- **Reżyser powtórek OBS** — zapis potwierdzony nazwą pliku z OBS, odtwarzanie w wybranym źródle multimediów i przywrócenie jego ustawień.
+- **Profile streama** — zapis i przełączanie wyglądu, alertów, overlayu i LimboAI; dodano regulację głośności głosu.
+- **Limbo widzi grę** — analiza pojedynczego kadru z wybranego źródła OBS, z podglądem przed wysłaniem do wybranego modelu AI.
+- **Teleturniej Limbo** — własna baza pytań, odpowiedzi z czatu, odliczanie, punkty za poprawność i szybkość, finał oraz overlay.
+- **Czat kontra boss** — wspólna walka pytaniami i komendą !atak, pasek HP, ranking obrażeń i opcjonalna scena OBS po zwycięstwie.
+- Automatyczna aktualizacja czeka na zakończenie gier i operacji Studia.
+
 ## 0.6.7 — 2026-10-30
 
 - Połączenie IRC korzysta z systemowego TLS; usunięto stare zależności rustls 0.21 i webpki 0.101 zgłaszane przez GitHub.

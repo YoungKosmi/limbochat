@@ -29,6 +29,8 @@
 
 ## ✨ Funkcje
 
+**Nowe: [LiMBO Studio](docs/STUDIO.md)** — karta moderacji, ankiety i predykcje, momenty i powtórki OBS, profile streama, analiza kadru z gry, teleturniej i boss dla czatu. Otwórz przyciskiem **✦** w panelu.
+
 <table>
 <tr>
 <td width="50%" valign="top">

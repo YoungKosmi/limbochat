@@ -174,6 +174,12 @@ impl Executor {
     /// Narzędzia niezależne od Twitcha. `None` = to nie jest narzędzie lokalne.
     async fn execute_local(&mut self, ctx: &Context, name: &str, args: &Value) -> Option<Outcome> {
         let s = |key: &str| args[key].as_str().unwrap_or_default().trim().to_owned();
+        if matches!(name,"mark_moment"|"obs_save_replay"){
+            if let Some(hub)=&self.local.hub{
+                let command=crate::studio::Command::Moment{label:s("label"),replay:name=="obs_save_replay"};
+                return Some(match hub.studio_command(command).await{Ok(value)=>ok(value,Some(if name=="obs_save_replay"{"💾 Moment zapisany, czekam na potwierdzenie powtórki z OBS".into()}else{"📍 Moment zapisany".into()})),Err(error)=>fail(&error)});
+            }
+        }
         if name.starts_with("obs_") {
             return Some(match &self.local.obs {
                 Some(obs) => run_obs(obs, name, args).await.unwrap_or_else(|e| fail(&e)),
@@ -914,6 +920,8 @@ pub fn declarations() -> Value {
         { "name": "obs_streaming", "description": "Rozpoczyna albo kończy stream w OBS (wymaga potwierdzenia).",
           "parameters": { "type": "object", "properties": { "action": { "type": "string", "enum": ["start", "stop"] } }, "required": ["action"] } },
         { "name": "obs_save_replay", "description": "Zapisuje powtórkę z bufora powtórek OBS (ostatnie sekundy)." },
+        { "name": "mark_moment", "description": "Zapisuje czas streama i fragment czatu jako ciekawy moment do montażu. Użyj na 'zapamiętaj ten moment', 'zapisz znacznik', 'ale była akcja'.",
+          "parameters":{"type":"object","properties":{"label":{"type":"string","description":"Krótki opis momentu"}}} },
         { "name": "obs_status", "description": "Stan OBS: sceny, aktualna scena, czy trwa stream i nagrywanie." },
         { "name": "remember_viewer", "description": "Zapamiętuje trwały fakt o widzu (np. lubi koty, gra w CS-a).",
           "parameters": { "type": "object", "properties": { "user": user, "fact": { "type": "string", "description": "Krótki fakt w 3. osobie, bez nicku, np. 'lubi koty'" } }, "required": ["user", "fact"] } },

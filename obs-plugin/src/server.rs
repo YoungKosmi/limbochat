@@ -45,6 +45,10 @@ static INDEX: &str = include_str!("../web/index.html");
 static APP_JS: &str = include_str!("../web/app.js");
 static APP_CSS: &str = include_str!("../web/app.css");
 static OVERLAY: &str = include_str!("../web/overlay.html");
+static STUDIO: &str=include_str!("../web/studio.html");
+static STUDIO_JS: &str=include_str!("../web/studio.js");
+static STUDIO_CSS: &str=include_str!("../web/studio.css");
+static ARENA: &str=include_str!("../web/arena.html");
 static LOGO: &[u8] = include_bytes!("../../assets/logo.png");
 static FONTS: &[(&str, &[u8])] = &[
     ("Inter-Regular.ttf", include_bytes!("../../assets/fonts/Inter-Regular.ttf")),
@@ -65,6 +69,11 @@ pub async fn serve(listener: tokio::net::TcpListener, hub: HubHandle, mut shutdo
         .route("/demo/{name}", get(demo_emote))
         .route("/ws", get(websocket))
         .route("/overlay", get(|| async { asset("text/html; charset=utf-8", OVERLAY.as_bytes(), false) }))
+        .route("/studio",get(||async{asset("text/html; charset=utf-8",STUDIO.as_bytes(),false)}))
+        .route("/studio.js",get(||async{asset("text/javascript; charset=utf-8",STUDIO_JS.as_bytes(),false)}))
+        .route("/studio.css",get(||async{asset("text/css; charset=utf-8",STUDIO_CSS.as_bytes(),false)}))
+        .route("/arena",get(||async{asset("text/html; charset=utf-8",ARENA.as_bytes(),false)}))
+        .route("/arena/ws",get(overlay_socket))
         .route("/overlay/ws", get(overlay_socket))
         .route("/media", get(media))
         .route("/control/health", get(health))
@@ -270,11 +279,12 @@ fn overlay_look(settings: &serde_json::Value) -> Arc<str> {
 /// Czy zdarzenie z panelu ma trafić do overlayu (i w jakiej postaci).
 fn overlay_filter(json: &str) -> Option<Arc<str>> {
     // Szybki odsiew: większość ruchu to wiadomości czatu.
-    if !json.starts_with(r#"{"t":"jarvis""#) && !json.starts_with(r#"{"t":"settings""#) {
+    if !json.starts_with(r#"{"t":"jarvis""#) && !json.starts_with(r#"{"t":"settings""#) && !json.starts_with(r#"{"t":"studio""#) {
         return None;
     }
     let value: serde_json::Value = serde_json::from_str(json).ok()?;
     match value["t"].as_str()? {
+        "studio" if value["event"]=="public"=>Some(serde_json::json!({"t":"studio","event":"public","data":value["data"]}).to_string().into()),
         "settings" => Some(overlay_look(&value)),
         "jarvis" => {
             const PUBLIC: [&str; 8] = ["state", "level", "transcript", "action", "reply", "error", "reminder", "vip"];
@@ -298,6 +308,10 @@ async fn overlay_connection(socket: WebSocket, hub: HubHandle, mut shutdown: wat
     let text = |json: Arc<str>| Message::Text(json.as_ref().to_owned().into());
     if sink.send(text(overlay_look(&settings))).await.is_err() {
         return;
+    }
+    if let Ok(value)=serde_json::from_str::<serde_json::Value>(&snapshot){
+        let public=serde_json::json!({"t":"studio","event":"public","data":value["studio"]["public"]}).to_string();
+        if sink.send(Message::Text(public.into())).await.is_err(){return;}
     }
     loop {
         tokio::select! {
@@ -344,6 +358,10 @@ mod tests {
 
     #[test]
     fn overlay_gets_only_public_assistant_events() {
+        assert!(overlay_filter(r#"{"t":"studio","event":"state","data":{"questions":[{"correct":1}],"profiles":["prywatny"],"moments":[{"chat":["tekst"]}]}}"#).is_none());
+        assert!(overlay_filter(r#"{"t":"studio","event":"viewer","data":{"notes":"sekret moderatora"}}"#).is_none());
+        assert!(overlay_filter(r#"{"t":"studio","event":"frame","data":{"image":"sekret"}}"#).is_none());
+        assert!(overlay_filter(r#"{"t":"studio","event":"public","data":{"quiz":{"question":"Pytanie","correct":null}}}"#).unwrap().contains("Pytanie"));
         assert!(overlay_filter(r#"{"t":"message","m":{"raw":"sekret"}}"#).is_none());
         assert!(overlay_filter(r#"{"t":"jarvis","ev":{"e":"status","config":{"mic":"Mikrofon"}}}"#).is_none());
         assert!(overlay_filter(r#"{"t":"jarvis","ev":{"e":"enroll","step":1}}"#).is_none());

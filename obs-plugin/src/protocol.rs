@@ -43,6 +43,7 @@ pub enum ServerMsg {
     /// Zmiana istniejącego alertu (rymowanka gotowa, kolejni obdarowani w gift-bombie).
     AlertUpdate { channel: String, id: String, alert: AlertDto },
     Obs(crate::obs::ObsStatus),
+    Studio { event:String, data:serde_json::Value },
     /// Podsumowanie streama (nowe albo z dopisanym tekstem LimboAI).
     Summary(crate::summary::Summary),
     Summaries { list: Vec<crate::summary::Summary> },
@@ -71,6 +72,7 @@ pub struct Snapshot {
     /// Ostatnie podsumowanie streama (jeśli było w tej sesji).
     pub summary: Option<crate::summary::Summary>,
     pub memory_count: usize,
+    pub studio: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -254,6 +256,7 @@ pub enum ClientMsg {
     /// Podgląd obrazków z linków: all / trusted / off.
     MediaPreviews { mode: String },
     ObsSettings(crate::obs::ObsConfig),
+    Studio { command:crate::studio::Command },
     /// `None` usuwa hasło. Hasło nigdy nie wraca do panelu.
     ObsPassword { password: Option<String> },
     MemorySettings(crate::config::MemoryConfig),

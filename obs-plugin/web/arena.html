@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>LiMBO Arena</title>
+    <style>
+      @font-face {
+        font-family: Outfit;
+        src: url("/fonts/Outfit-Bold.ttf");
+        font-weight: 700;
+      }
+      @font-face {
+        font-family: Inter;
+        src: url("/fonts/Inter-Regular.ttf");
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+        color: #fff;
+        font-family: Inter, sans-serif;
+        width: 100%;
+        min-height: 100%;
+        overflow: hidden;
+      }
+      .arena {
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        align-items: center;
+      }
+      .card {
+        width: min(850px, 95vw);
+        padding: 26px 32px;
+        border-radius: 22px;
+        border: 2px solid #ac72f0;
+        background: linear-gradient(130deg, #221530f2, #100d1bf7);
+        box-shadow:
+          0 12px 50px #0008,
+          inset 0 0 50px #a755ef10;
+        animation: appear 0.35s ease;
+      }
+      .tag {
+        font-size: 12px;
+        letter-spacing: 4px;
+        color: #d0a4fa;
+      }
+      .top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+      }
+      h1 {
+        font:
+          700 31px Outfit,
+          sans-serif;
+        margin: 15px 0 20px;
+      }
+      .choices {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .choice {
+        padding: 12px 16px;
+        background: #ffffff0b;
+        border: 1px solid #6f4787;
+        border-radius: 12px;
+        font-size: 20px;
+        display: flex;
+        gap: 12px;
+      }
+      .choice b {
+        color: #cc98ff;
+      }
+      .choice.correct {
+        background: #18583d;
+        border-color: #80f2ba;
+        box-shadow: 0 0 20px #63e9aa30;
+      }
+      .timer {
+        font:
+          700 29px Outfit,
+          sans-serif;
+        color: #e4b3ff;
+        white-space: nowrap;
+      }
+      .hint {
+        font-size: 14px;
+        color: #c3a8d5;
+        margin-top: 18px;
+      }
+      .monster {
+        font-size: 90px;
+        line-height: 1;
+        filter: drop-shadow(0 0 25px #b84aff);
+        animation: float 2.4s ease-in-out infinite;
+      }
+      .boss-head {
+        display: flex;
+        gap: 25px;
+        align-items: center;
+      }
+      .boss-head h1 {
+        margin: 10px 0;
+      }
+      .hp-wrap {
+        height: 19px;
+        border: 1px solid #ed76bc;
+        border-radius: 20px;
+        background: #39192d;
+        overflow: hidden;
+        margin-top: 15px;
+      }
+      .hp {
+        height: 100%;
+        background: linear-gradient(90deg, #e24b88, #e889fe);
+        transition: width 0.35s;
+        box-shadow: 0 0 20px #f0aaff;
+      }
+      .numbers {
+        font:
+          700 22px Outfit,
+          sans-serif;
+        color: #ffbaf5;
+      }
+      .scores {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 20px;
+      }
+      .score {
+        padding: 8px 12px;
+        border-radius: 30px;
+        background: #ffffff0e;
+        font-size: 13px;
+      }
+      .victory {
+        border-color: #ffe087;
+        background: radial-gradient(ellipse at top, #6e4b1be8, #171120f5);
+      }
+      .victory .monster {
+        filter: drop-shadow(0 0 30px #ffd666);
+      }
+      .defeat {
+        border-color: #a191bb;
+      }
+      .hit {
+        animation: shake 0.25s ease;
+      }
+      .bar {
+        height: 10px;
+        background: #392247;
+        border-radius: 10px;
+        overflow: hidden;
+        margin: 7px 0 12px;
+      }
+      .bar i {
+        display: block;
+        height: 100%;
+        background: linear-gradient(90deg, #ac69fa, #f6bcff);
+        transition: width 0.4s;
+      }
+      .votes {
+        display: flex;
+        justify-content: space-between;
+        font-size: 18px;
+      }
+      .confetti {
+        height: 6px;
+        background: repeating-linear-gradient(
+          90deg,
+          #ffe18a 0 14px,
+          transparent 14px 24px,
+          #d99aff 24px 38px,
+          transparent 38px 48px,
+          #a1e8c2 48px 64px
+        );
+        margin: 18px -10px;
+        border-radius: 10px;
+        animation: shine 1.2s ease-in-out infinite alternate;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      @keyframes appear {
+        from {
+          opacity: 0;
+          transform: translateY(20px) scale(0.97);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes float {
+        50% {
+          transform: translateY(-7px);
+        }
+      }
+      @keyframes shake {
+        25% {
+          transform: translateX(-6px);
+        }
+        75% {
+          transform: translateX(6px);
+        }
+      }
+      @keyframes shine {
+        to {
+          filter: brightness(1.6);
+          transform: translateY(-3px);
+        }
+      }
+      @media (max-width: 650px) {
+        .arena {
+          padding: 10px;
+        }
+        .card {
+          padding: 20px;
+        }
+        .choices {
+          grid-template-columns: 1fr;
+        }
+        h1 {
+          font-size: 24px;
+        }
+        .monster {
+          font-size: 60px;
+        }
+        .choice {
+          font-size: 17px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="arena" id="arena"></div>
+    <script>
+      "use strict";
+      const root = document.getElementById("arena"),
+        view = new URLSearchParams(location.search).get("view");
+      let state = {},
+        version = null,
+        lastHp = null;
+      function el(tag, text, cls) {
+        const node = document.createElement(tag);
+        if (text !== undefined) node.textContent = text;
+        if (cls) node.className = cls;
+        return node;
+      }
+      function scores(card, list) {
+        if (!list?.length) return;
+        const rows = el("div", undefined, "scores");
+        list
+          .slice(0, 5)
+          .forEach((s, i) =>
+            rows.append(
+              el(
+                "span",
+                `${i === 0 ? "👑" : i + 1 + "."} ${s.name} · ${s.points} pkt`,
+                "score",
+              ),
+            ),
+          );
+        card.append(rows);
+      }
+      function choices(card, game) {
+        const list = el("div", undefined, "choices");
+        game.choices.forEach((text, i) => {
+          const choice = el(
+            "div",
+            undefined,
+            "choice" + (game.correct === i ? " correct" : ""),
+          );
+          choice.append(el("b", String.fromCharCode(65 + i)), el("span", text));
+          list.append(choice);
+        });
+        card.append(list);
+      }
+      function timer(game) {
+        const node = el("span", "", "timer");
+        node.dataset.deadline = game.deadline;
+        return node;
+      }
+      function render() {
+        root.replaceChildren();
+        if ((!view || view === "quiz") && state.quiz) {
+          const q = state.quiz,
+            card = el("article", undefined, "card"),
+            top = el("div", undefined, "top");
+          top.append(el("div", `LIMBO QUIZ · ${q.index}/${q.total}`, "tag"));
+          if (q.phase === "question") top.append(timer(q));
+          card.append(
+            top,
+            el(
+              "h1",
+              q.phase === "finished" ? "🏆 Finał teleturnieju" : q.question,
+            ),
+          );
+          if (q.phase !== "finished") choices(card, q);
+          card.append(
+            el(
+              "div",
+              q.phase === "question"
+                ? `Odpowiedz na czacie: !odp A · ${q.answers} odpowiedzi`
+                : q.phase === "reveal"
+                  ? "Poprawna odpowiedź podświetlona. Gotowi na kolejne pytanie?"
+                  : "Gratulacje dla uczestników!",
+              "hint",
+            ),
+          );
+          scores(card, q.scores);
+          root.append(card);
+        }
+        if ((!view || view === "boss") && state.boss) {
+          const b = state.boss,
+            card = el(
+              "article",
+              undefined,
+              "card" +
+                (b.phase === "victory"
+                  ? " victory"
+                  : b.phase === "defeat"
+                    ? " defeat"
+                    : ""),
+            ),
+            top = el("div", undefined, "boss-head"),
+            body = el("div");
+          top.append(el("div", b.phase === "victory" ? "🏆" : "👾", "monster"));
+          body.append(
+            el("div", "CZAT KONTRA BOSS", "tag"),
+            el(
+              "h1",
+              b.phase === "victory"
+                ? `${b.name} pokonany!`
+                : b.phase === "defeat"
+                  ? "Boss wygrywa tę rundę"
+                  : b.name,
+            ),
+            el("span", `${b.hp} / ${b.max_hp} HP`, "numbers"),
+          );
+          top.append(body);
+          if (b.phase === "battle") top.append(timer(b));
+          card.append(top);
+          const track = el("div", undefined, "hp-wrap"),
+            hp = el("div", undefined, "hp");
+          hp.style.width = `${(b.hp / b.max_hp) * 100}%`;
+          track.append(hp);
+          card.append(track);
+          if (b.phase === "battle") {
+            card.append(el("h1", b.question));
+            choices(card, b);
+            card.append(
+              el(
+                "div",
+                "Atakuj na czacie: !atak A · Poprawna odpowiedź = 10 obrażeń",
+                "hint",
+              ),
+            );
+          }
+          if (b.phase === "victory")
+            card.append(el("div", undefined, "confetti"));
+          scores(card, b.scores);
+          if (lastHp !== null && b.hp < lastHp) card.classList.add("hit");
+          lastHp = b.hp;
+          root.append(card);
+        }
+        if ((!view || view === "ballot") && state.ballot) {
+          const b = state.ballot.entry,
+            card = el("article", undefined, "card");
+          card.append(
+            el(
+              "div",
+              state.ballot.kind === "poll"
+                ? "ANKIETA CZATU"
+                : "PREDYKCJA CZATU",
+              "tag",
+            ),
+            el("h1", b.title),
+          );
+          for (const choice of b.choices || b.outcomes || []) {
+            const row = el("div", undefined, "votes");
+            row.append(
+              el("span", choice.title),
+              el(
+                "b",
+                state.ballot.kind === "poll"
+                  ? `${choice.votes || 0} · ${choice.percent || 0}%`
+                  : `${choice.users || 0} osób · ${choice.channel_points || 0} pkt`,
+              ),
+            );
+            card.append(row);
+            if (state.ballot.kind === "poll") {
+              const bar = el("div", undefined, "bar"),
+                fill = el("i");
+              fill.style.width = `${Math.min(100, Math.max(0, choice.percent || 0))}%`;
+              bar.append(fill);
+              card.append(bar);
+            }
+          }
+          if (b.winner) card.append(el("h1", `👑 ${b.winner}`));
+          root.append(card);
+        }
+        tick();
+      }
+      function tick() {
+        for (const node of document.querySelectorAll("[data-deadline]"))
+          node.textContent =
+            Math.max(
+              0,
+              Math.ceil((Number(node.dataset.deadline) - Date.now()) / 1000),
+            ) + " s";
+      }
+      setInterval(tick, 250);
+      function connect() {
+        const ws = new WebSocket(`ws://${location.host}/arena/ws`);
+        ws.onmessage = (event) => {
+          const msg = JSON.parse(event.data);
+          if (msg.t === "overlay") {
+            if (version && version !== msg.version) return location.reload();
+            version = msg.version;
+          }
+          if (msg.t === "studio" && msg.event === "public") {
+            state = msg.data || {};
+            render();
+          }
+        };
+        ws.onclose = () => {
+          root.replaceChildren();
+          setTimeout(connect, 1000);
+        };
+      }
+      connect();
+    </script>
+  </body>
+</html>

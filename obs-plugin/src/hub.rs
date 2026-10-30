@@ -39,10 +39,13 @@ use crate::{
 
 /// Ile ostatnich wiadomości na kanał trzymamy dla przeładowanych paneli.
 const HISTORY: usize = 300;
+include!("studio_hub.rs");
 
 pub type Outbox = mpsc::UnboundedSender<Arc<str>>;
 
 pub enum Request {
+    StudioCommand { command:crate::studio::Command, reply:oneshot::Sender<Result<serde_json::Value,String>> },
+    StudioDone(StudioResult),
     /// Nowe połączenie panelu: odpowiedź = migawka + subskrypcja zdarzeń.
     Connect { reply: oneshot::Sender<(Arc<str>, broadcast::Receiver<Arc<str>>)> },
     Client { msg: ClientMsg, conn: Outbox },
@@ -89,6 +92,9 @@ pub struct HubHandle {
 }
 
 impl HubHandle {
+    pub async fn studio_command(&self,command:crate::studio::Command)->Result<serde_json::Value,String>{
+        let(reply,rx)=oneshot::channel();self.requests.send(Request::StudioCommand{command,reply}).map_err(|_|"Panel nie działa.".to_owned())?;rx.await.map_err(|_|"Panel nie odpowiedział.".to_owned())?
+    }
     pub async fn connect(&self) -> Option<(Arc<str>, broadcast::Receiver<Arc<str>>)> {
         let (reply, rx) = oneshot::channel();
         self.requests.send(Request::Connect { reply }).ok()?;
@@ -210,6 +216,15 @@ pub struct Hub {
     /// Ostatnie powitanie danego VIP-a (żeby nie witać przy każdym „siema”).
     greeted: std::collections::HashMap<String, Instant>,
     demo_alert: usize,
+    studio: crate::studio::Store,
+    quiz: Option<crate::games::Quiz>,
+    boss: Option<crate::games::Boss>,
+    games_dirty: bool,
+    ballot_overlay: Option<serde_json::Value>,
+    studio_busy: std::collections::HashSet<&'static str>,
+    vision_frame: Option<(String,String,i64)>,
+    vision_generation:u64,
+    replay_stop: Option<watch::Sender<bool>>,
 }
 
 impl Hub {
@@ -277,6 +292,7 @@ impl Hub {
             learn_buffer: Vec::new(),
             stream_ended: None,
             demo_alert: 0,
+            studio:crate::studio::Store::load(demo_mode),quiz:None,boss:None,games_dirty:false,ballot_overlay:None,studio_busy:Default::default(),vision_frame:None,vision_generation:0,replay_stop:None,
         };
 
         if hub.demo.is_some() {
@@ -307,12 +323,14 @@ impl Hub {
             let mut minute = tokio::time::interval(Duration::from_secs(60));
             minute.tick().await;
             let mut minutes = 0u64;
+            let mut game_tick=tokio::time::interval(Duration::from_millis(500));
             if hub.demo.is_some() {
                 // Demo: „stream” trwa od startu, żeby dało się obejrzeć podsumowanie.
                 hub.stats = Some(crate::demo::stream_stats(chrono::Utc::now() - chrono::Duration::minutes(97)));
             }
             loop {
                 tokio::select! {
+                    _ = game_tick.tick()=>hub.tick_games(),
                     Some(event) = ui_rx.recv() => hub.on_event(event),
                     Some(request) = request_rx.recv() => hub.on_request(request),
                     Some(event) = obs_rx.recv() => hub.on_obs(event),
@@ -320,6 +338,7 @@ impl Hub {
                     _ = minute.tick() => {
                         minutes += 1;
                         hub.memory.save_if_dirty();
+                        hub.studio.save();
                         if minutes % 2 == 0 {
                             hub.poll_twitch_live();
                         }
@@ -331,6 +350,8 @@ impl Hub {
                 }
             }
             hub.memory.save_if_dirty();
+            hub.studio.save();
+            if let Some(stop)=hub.replay_stop.take(){let _=stop.send(true);}
             if let Some(task) = hub.eventsub.take() {
                 task.abort();
             }
@@ -396,6 +417,7 @@ impl Hub {
                 .unwrap_or_default(),
             summary: self.last_summary.clone(),
             memory_count: self.memory.len(),
+            studio:self.studio_state(),
         }
     }
 
@@ -457,6 +479,7 @@ impl Hub {
             }
             UiEvent::Message(msg) => self.push_message(*msg),
             UiEvent::MessageDeleted { channel, message_id } => {
+                if let Some((login,text))=self.channels.iter().find(|c|c.login==channel).and_then(|c|c.history.iter().find(|m|m.id==message_id)).map(|m|(m.sender_login.clone(),m.raw_text.clone())){self.studio.moderation(&channel,&login,"delete",&text);}
                 if let Some(ch) = self.channel_mut(&channel) {
                     if let Some(m) = ch.history.iter_mut().rev().find(|m| m.id == message_id) {
                         m.deleted = true;
@@ -468,6 +491,7 @@ impl Hub {
                 self.broadcast(&ServerMsg::Deleted { channel, id: message_id });
             }
             UiEvent::UserCleared { channel, user_id, login, timeout_secs } => {
+                self.studio.moderation(&channel,&login,if timeout_secs.is_some(){"timeout"}else{"ban"},&timeout_secs.map(|s|format!("{s} sekund")).unwrap_or_default());
                 if let Some(ch) = self.channel_mut(&channel) {
                     for m in ch.history.iter_mut().filter(|m| m.sender_id == user_id) {
                         m.deleted = true;
@@ -524,12 +548,14 @@ impl Hub {
                 self.broadcast(&ServerMsg::Badges { channel, map: dto });
             }
             UiEvent::Notice { channel, text } => self.notice(channel, text, false),
+            UiEvent::Unbanned{channel,login}=>self.studio.moderation(&channel,&login,"unban","Potwierdzone przez Twitch"),
             UiEvent::Alert(alert) => self.on_alert(*alert, false),
             UiEvent::Error { channel, text } => self.notice(channel, text, true),
         }
     }
 
     fn push_message(&mut self, msg: ParsedMessage) {
+        self.studio_chat(&msg);
         let dto = MessageDto::from(&msg);
         if let (AuthState::LoggedIn { login, .. }, Some(j)) = (&self.auth, &self.jarvis) {
             if self.config.jarvis.read_mentions && mentions(&msg.raw_text, &msg.sender_login, login) {
@@ -590,6 +616,8 @@ impl Hub {
 
     fn on_request(&mut self, request: Request) {
         match request {
+            Request::StudioCommand{command,reply}=>{let result=self.studio_command(command,None);let _=reply.send(result);}
+            Request::StudioDone(result)=>self.studio_done(result),
             Request::Connect { reply } => {
                 let snapshot = serde_json::to_string(&ServerMsg::Snapshot(self.snapshot())).unwrap_or_default();
                 let _ = reply.send((snapshot.into(), self.events.subscribe()));
@@ -605,7 +633,8 @@ impl Hub {
             }
             Request::UpdateGate { reply } => {
                 let auto = self.config.updates != "ask";
-                let idle = self.jarvis.as_ref().is_none_or(JarvisHandle::is_idle);
+                let idle = self.jarvis.as_ref().is_none_or(JarvisHandle::is_idle)
+                    && self.quiz.is_none() && self.boss.is_none() && self.studio_busy.is_empty();
                 let _ = reply.send((auto, idle));
             }
             Request::UpdateStatus(status) => self.broadcast(&ServerMsg::Update(status)),
@@ -650,6 +679,7 @@ impl Hub {
 
     fn on_client(&mut self, msg: ClientMsg, conn: &Outbox) {
         match msg {
+            ClientMsg::Studio{command}=>{if let Err(text)=self.studio_command(command,Some(conn)){Self::reply(conn,&ServerMsg::Notice{channel:None,text,error:true});}}
             ClientMsg::Join { channel } => {
                 if let Err(text) = self.open_channel(&channel) {
                     Self::reply(conn, &ServerMsg::Notice { channel: None, text, error: true });
@@ -730,6 +760,7 @@ impl Hub {
                 }
             }
             ClientMsg::JarvisSettings(mut c) => {
+                c.voice_volume=c.voice_volume.min(100);
                 if jarvis::hotkey::parse_combo(&c.hotkey).is_none() {
                     Self::reply(conn, &ServerMsg::Notice {
                         channel: None,

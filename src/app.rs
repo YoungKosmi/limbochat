@@ -448,6 +448,7 @@ impl ChatApp {
                 }
             },
             UiEvent::Notice { channel, text } => self.system(channel, text, SystemLevel::Info),
+            UiEvent::Unbanned {channel,login}=>{let _=(channel,login);},
             // Aplikacja PC: alert jako linia systemowa + ewentualna wiadomość.
             UiEvent::Alert(alert) => {
                 let channel = alert.channel_login.clone();

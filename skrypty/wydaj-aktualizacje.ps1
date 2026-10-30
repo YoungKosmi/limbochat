@@ -1,6 +1,6 @@
 ﻿# Nowa wersja: budowanie, podpis, wydanie na GitHubie. Znajomi dostaną ją sami.
 # -Auto: bez pytań (następny numer wersji, kod źródłowy też na GitHuba), log w wydania\ostatnie-wydanie.log.
-param([switch]$Auto)
+param([switch]$Auto,[string]$ReleaseVersion)
 . (Join-Path $PSScriptRoot 'wspolne.ps1')
 if ($Auto) {
     New-Item -ItemType Directory -Force -Path (Join-Path $Root 'wydania') | Out-Null
@@ -18,7 +18,7 @@ Say 'WYDANIE AKTUALIZACJI LiMBOCHAT' 'White'
 Say "Repozytorium: $repo   ·   obecna wersja: $current"
 $parts = $current.Split('.')
 $suggest = "$($parts[0]).$($parts[1]).$([int]$parts[2] + 1)"
-$version = (Read-Host "  Nowa wersja [Enter = $suggest]").Trim()
+$version = if ($ReleaseVersion) { $ReleaseVersion.Trim() } else { (Read-Host "  Nowa wersja [Enter = $suggest]").Trim() }
 if (-not $version) { $version = $suggest }
 if ($version -notmatch '^\d+\.\d+\.\d+$') { Fail 'Wersja musi wyglądać tak: 0.6.0' }
 if ([version]$version -le [version]$current) { Fail "Nowa wersja musi być wyższa niż $current." }

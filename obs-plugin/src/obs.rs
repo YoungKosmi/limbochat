@@ -75,9 +75,17 @@ enum ObsCmd {
 pub struct ObsHandle {
     tx: mpsc::UnboundedSender<ObsCmd>,
     status: Arc<Mutex<ObsStatus>>,
+    replays: tokio::sync::broadcast::Sender<String>,
 }
 
 impl ObsHandle {
+    pub async fn capture_replay(&self)->Result<String,String>{
+        let mut saved=self.replays.subscribe();
+        let status=self.request("GetReplayBufferStatus",json!({})).await?;
+        if status["outputActive"]!=true{return Err("Włącz bufor powtórek w OBS przed zapisywaniem powtórki.".into());}
+        self.request("SaveReplayBuffer",json!({})).await?;
+        tokio::time::timeout(Duration::from_secs(15),saved.recv()).await.map_err(|_|"OBS nie potwierdził zapisu powtórki. Sprawdź folder nagrań.".to_owned())?.map_err(|_|"OBS rozłączył zapis powtórki.".into())
+    }
     pub fn status(&self) -> ObsStatus {
         self.status.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
@@ -115,15 +123,16 @@ pub fn not_connected_hint(status: &ObsStatus) -> String {
 pub fn spawn(config: ObsConfig, events: mpsc::UnboundedSender<ObsEvent>) -> ObsHandle {
     let (tx, rx) = mpsc::unbounded_channel();
     let status = Arc::new(Mutex::new(ObsStatus { enabled: config.enabled, ..Default::default() }));
-    tokio::spawn(run(config, rx, status.clone(), events));
-    ObsHandle { tx, status }
+    let (replays,_)=tokio::sync::broadcast::channel(8);
+    tokio::spawn(run(config, rx, status.clone(), events,replays.clone()));
+    ObsHandle { tx, status,replays }
 }
 
 fn url(port: u16) -> String {
     std::env::var("LIMBOCHAT_OBS_URL").unwrap_or_else(|_| format!("ws://127.0.0.1:{port}"))
 }
 
-async fn run(mut config: ObsConfig, mut rx: mpsc::UnboundedReceiver<ObsCmd>, status: Arc<Mutex<ObsStatus>>, events: mpsc::UnboundedSender<ObsEvent>) {
+async fn run(mut config: ObsConfig, mut rx: mpsc::UnboundedReceiver<ObsCmd>, status: Arc<Mutex<ObsStatus>>, events: mpsc::UnboundedSender<ObsEvent>, replays:tokio::sync::broadcast::Sender<String>) {
     let set = |f: &dyn Fn(&mut ObsStatus)| {
         let snapshot = {
             let mut s = status.lock().unwrap_or_else(|e| e.into_inner());
@@ -140,7 +149,7 @@ async fn run(mut config: ObsConfig, mut rx: mpsc::UnboundedReceiver<ObsCmd>, sta
             s.has_password = has_password;
         });
         let retry = if config.enabled {
-            match session(&config, &mut rx, &status, &events).await {
+            match session(&config, &mut rx, &status, &events,&replays).await {
                 Ok(SessionEnd::Reconfigure(c)) => {
                     config = c;
                     Duration::ZERO
@@ -195,6 +204,7 @@ async fn session(
     rx: &mut mpsc::UnboundedReceiver<ObsCmd>,
     status: &Arc<Mutex<ObsStatus>>,
     events: &mpsc::UnboundedSender<ObsEvent>,
+    replays: &tokio::sync::broadcast::Sender<String>,
 ) -> Result<SessionEnd, Fail> {
     let wait = Duration::from_secs(10);
     let (ws, _) = tokio_tungstenite::connect_async(url(config.port)).await.map_err(|_| {
@@ -298,7 +308,10 @@ async fn session(
                             let _ = reply.send(result);
                         }
                     }
-                    Some(5) => on_event(d, status, events),
+                    Some(5) => {
+                        if d["eventType"]=="ReplayBufferSaved" { if let Some(path)=d["eventData"]["savedReplayPath"].as_str().filter(|p|!p.is_empty()){let _=replays.send(path.into());} }
+                        on_event(d, status, events);
+                    },
                     _ => {}
                 }
             }
@@ -406,6 +419,27 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn fixture()->(ObsHandle,mpsc::UnboundedReceiver<ObsCmd>){let(tx,rx)=mpsc::unbounded_channel();let(replays,_)=tokio::sync::broadcast::channel(8);(ObsHandle{tx,replays,status:Arc::new(Mutex::new(ObsStatus{connected:true,current_scene:Some("Gra".into()),..Default::default()}))},rx)}
+
+    #[tokio::test]
+    async fn replay_save_waits_for_obs_file_event_and_rejects_disabled_buffer(){
+        let(handle,mut rx)=fixture();let replays=handle.replays.clone();let job=tokio::spawn(async move{handle.capture_replay().await});
+        let ObsCmd::Request{kind,reply,..}=rx.recv().await.unwrap()else{panic!()};assert_eq!(kind,"GetReplayBufferStatus");let _=reply.send(Ok(json!({"outputActive":true})));
+        let ObsCmd::Request{kind,reply,..}=rx.recv().await.unwrap()else{panic!()};assert_eq!(kind,"SaveReplayBuffer");let _=reply.send(Ok(json!({})));assert!(!job.is_finished());replays.send("C:\\Clips\\now.mkv".into()).unwrap();assert_eq!(job.await.unwrap().unwrap(),"C:\\Clips\\now.mkv");
+        let(handle,mut rx)=fixture();let job=tokio::spawn(async move{handle.capture_replay().await});let ObsCmd::Request{reply,..}=rx.recv().await.unwrap()else{panic!()};let _=reply.send(Ok(json!({"outputActive":false})));assert!(job.await.unwrap().is_err());assert!(rx.try_recv().is_err());
+    }
+    #[tokio::test]
+    async fn replay_playback_restores_original_source_after_end(){
+        let(handle,mut rx)=fixture();let(_stop,stop_rx)=tokio::sync::watch::channel(false);
+        let job=tokio::spawn(crate::studio::play_replay(handle,"Powtórka".into(),"C:\\Clips\\new.mkv".into(),stop_rx));
+        let mut calls=Vec::new();let mut input=json!({"local_file":"C:\\old.mp4","looping":true});let original=input.clone();
+        loop{tokio::select!{
+            command=rx.recv()=>{let Some(ObsCmd::Request{kind,data,reply})=command else{break};calls.push((kind.clone(),data.clone()));let result=match kind.as_str(){"GetInputSettings"=>json!({"inputKind":"ffmpeg_source","inputSettings":input}),"GetSceneItemId"=>json!({"sceneItemId":7}),"GetSceneItemEnabled"=>json!({"sceneItemEnabled":false}),"GetMediaInputStatus"=>json!({"mediaState":"OBS_MEDIA_STATE_ENDED"}),"SetInputSettings"=>{input=data["inputSettings"].clone();json!({})},_=>json!({})};let _=reply.send(Ok(result));}
+            _=tokio::time::sleep(Duration::from_secs(3))=>panic!("powtórka nie zakończyła się"),
+        }}
+        assert!(job.await.unwrap().is_ok());assert_eq!(input,original);assert!(calls.iter().any(|(kind,data)|kind=="SetSceneItemEnabled"&&data["sceneItemEnabled"]==false));assert_eq!(calls.last().unwrap().0,"SetInputSettings");
+    }
 
     /// Przykład z dokumentacji obs-websocket 5.
     #[test]

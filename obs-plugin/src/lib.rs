@@ -56,6 +56,9 @@ mod protocol;
 mod server;
 mod share;
 mod summary;
+mod studio;
+mod games;
+mod vision;
 pub mod update;
 
 /// Stały port — adres panelu w OBS musi się nie zmieniać.

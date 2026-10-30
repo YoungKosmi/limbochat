@@ -20,6 +20,7 @@
         <span class="flow">CHAT</span>
       </div>
       <div class="header-actions">
+        <button class="icon-btn" id="studio-btn" title="Studio streama">✦</button>
         <button class="icon-btn jarvis-btn" id="jarvis-btn" title="LimboAI"><span class="mini-orb"></span><span class="wake-dot" title="Słucham „Hej Limbo”"></span></button>
         <button class="icon-btn" id="settings-btn" title="Ustawienia">
           <svg viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
@@ -158,6 +159,7 @@
       <div class="tag section">LimboAI — asystent głosowy</div>
       <label class="switch"><input type="checkbox" id="jv-enabled"><span></span>Włączony</label>
       <label class="switch"><input type="checkbox" id="jv-voice"><span></span>Odpowiada głosem</label>
+      <label class="field">Głośność głosu Limbo <input id="jv-volume" type="range" min="0" max="100" value="100"><span id="jv-volume-value">100%</span></label>
       <div class="field">
         <span class="label">Przycisk do mówienia</span>
         <div class="row-inline"><span class="keys" id="jv-keys"></span><button class="btn-ghost small" id="jv-record">Zmień</button></div>

@@ -354,6 +354,15 @@ impl Helix {
         Ok(resp.data.into_iter().next().map(|p| poll_json(&p)))
     }
 
+    pub async fn poll_history(&self,broadcaster_id:&str)->Result<Vec<Value>,HelixError>{
+        let response:Data<Poll>=self.request(Method::GET,"/polls",&[("broadcaster_id",broadcaster_id),("first","20")],None).await?.json().await?;
+        Ok(response.data.iter().map(poll_json).collect())
+    }
+    pub async fn prediction_history(&self,broadcaster_id:&str)->Result<Vec<Value>,HelixError>{
+        let response:Data<Prediction>=self.request(Method::GET,"/predictions",&[("broadcaster_id",broadcaster_id),("first","20")],None).await?.json().await?;
+        Ok(response.data.iter().map(|p|json!({"id":p.id,"title":p.title,"status_raw":p.status,"status":prediction_status(&p.status),"created_at":p.created_at,"winner":p.winning_outcome_id.as_deref().and_then(|id|p.outcomes.iter().find(|o|o.id==id)).map(|o|&o.title),"outcomes":p.outcomes.iter().map(|o|json!({"title":o.title,"users":o.users,"channel_points":o.channel_points})).collect::<Vec<_>>()})).collect())
+    }
+
     /// Wyniki ostatniej predykcji (trwającej, zablokowanej albo rozstrzygniętej).
     pub async fn prediction_results(&self, broadcaster_id: &str) -> Result<Option<Value>, HelixError> {
         let resp: Data<Prediction> = self
@@ -554,6 +563,8 @@ fn poll_json(p: &Poll) -> Value {
     let top = choices.first().map(|c| c.votes).unwrap_or(0);
     let winners: Vec<&str> = if total > 0 { choices.iter().filter(|c| c.votes == top).map(|c| c.title.as_str()).collect() } else { Vec::new() };
     json!({
+        "id":p.id,
+        "status_raw":p.status,
         "title": p.title,
         "status": poll_status(&p.status),
         "started_at": p.started_at,
