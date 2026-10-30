@@ -61,6 +61,8 @@ pub enum Request {
     UpdateGate { reply: oneshot::Sender<(bool, bool)> },
     /// Nowy stan aktualizacji — do wszystkich paneli.
     UpdateStatus(UpdateStatus),
+    /// Streamer kazał LimboAI zainstalować aktualizację (gdy wszystko ucichnie).
+    InstallUpdate,
     /// LimboAI zrobił klip (do podsumowania streama).
     ClipMade(String),
     /// Podsumowanie słowami / tytuł streama dopisane po zakończeniu.
@@ -140,6 +142,10 @@ impl HubHandle {
         let _ = self.requests.send(Request::UpdateStatus(status));
     }
 
+    pub fn install_update(&self) {
+        let _ = self.requests.send(Request::InstallUpdate);
+    }
+
     pub async fn jarvis_context(&self) -> Option<jarvis::tools::Context> {
         let (reply, rx) = oneshot::channel();
         self.requests.send(Request::JarvisContext { reply }).ok()?;
@@ -194,6 +200,10 @@ pub struct Hub {
     jarvis: Option<JarvisHandle>,
     jarvis_status: Arc<std::sync::Mutex<JarvisStatus>>,
     updater: Option<UpdaterHandle>,
+    /// Wersja, o którą LimboAI już zapytał (pyta raz o każdą).
+    announced_update: Option<String>,
+    /// Streamer zgodził się na instalację — przy najbliższej ciszy.
+    install_requested: bool,
     helix: Option<Arc<Helix>>,
     ui_tx: mpsc::UnboundedSender<UiEvent>,
     me: HubHandle,
@@ -277,6 +287,8 @@ impl Hub {
             jarvis: Some(jarvis),
             jarvis_status,
             updater: link.updater,
+            announced_update: None,
+            install_requested: false,
             helix,
             ui_tx: ui_tx.clone(),
             me: HubHandle { requests: requests.clone() },
@@ -457,6 +469,25 @@ impl Hub {
             demo: self.demo.is_some(),
             obs: self.config.obs.enabled.then(|| self.obs.status()),
             chatters,
+            update: self.ready_update(),
+        }
+    }
+
+    /// Pobrana nowa wersja czekająca na zgodę: (numer, zmiany).
+    fn ready_update(&self) -> Option<(String, String)> {
+        let status = self.updater.as_ref()?.status();
+        (status.state == "ready").then(|| (status.available.clone().unwrap_or_default(), status.notes.clone().unwrap_or_default()))
+    }
+
+    /// W trybie „pytaj” LimboAI raz ogłasza każdą pobraną wersję.
+    fn maybe_announce_update(&mut self, status: &UpdateStatus) {
+        let Some(version) = status.available.clone().filter(|_| status.state == "ready") else { return };
+        if self.config.updates != "ask" || self.announced_update.as_deref() == Some(version.as_str()) {
+            return;
+        }
+        self.announced_update = Some(version.clone());
+        if let Some(j) = &self.jarvis {
+            j.announce_update(version);
         }
     }
 
@@ -632,12 +663,16 @@ impl Hub {
                 let _ = reply.send(Handover { channels });
             }
             Request::UpdateGate { reply } => {
-                let auto = self.config.updates != "ask";
+                let auto = self.config.updates != "ask" || self.install_requested;
                 let idle = self.jarvis.as_ref().is_none_or(JarvisHandle::is_idle)
                     && self.quiz.is_none() && self.boss.is_none() && self.studio_busy.is_empty();
                 let _ = reply.send((auto, idle));
             }
-            Request::UpdateStatus(status) => self.broadcast(&ServerMsg::Update(status)),
+            Request::UpdateStatus(status) => {
+                self.broadcast(&ServerMsg::Update(status.clone()));
+                self.maybe_announce_update(&status);
+            }
+            Request::InstallUpdate => self.install_requested = true,
             Request::AlertRhyme { channel, id, rhyme } => self.on_rhyme(&channel, &id, rhyme),
             Request::ClipMade(url) => {
                 if let Some(st) = &mut self.stats {

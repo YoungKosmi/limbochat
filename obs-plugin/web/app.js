@@ -178,7 +178,7 @@ function timeAgo(ms) {
 function renderUpdate() {
   const u = state.update;
   if (!u) return;
-  const mode = (state.settings && state.settings.updates) || "auto";
+  const mode = (state.settings && state.settings.updates) || "ask";
   $("up-ver").textContent = `Wersja ${u.version}`;
   const labels = {
     disabled: "wyłączone", idle: "", checking: "sprawdzam…", up_to_date: "aktualna ✓",
@@ -189,7 +189,7 @@ function renderUpdate() {
   let note = "";
   if (u.state === "disabled") note = "Ta kopia nie ma ustawionego repozytorium aktualizacji (patrz README: ustaw-aktualizacje.bat).";
   else if (u.state === "error") note = u.error || "";
-  else if (u.state === "ready") note = mode === "auto" ? "Zainstaluje się sama, gdy LimboAI nic nie będzie robić." : "Kliknij „Zainstaluj teraz” — zajmie to 1–2 sekundy.";
+  else if (u.state === "ready") note = mode === "auto" ? "Zainstaluje się sama, gdy LimboAI nic nie będzie robić." : "Powiedz LimboAI „zainstaluj” albo kliknij „Zainstaluj teraz” — zajmie to 1–2 sekundy. LimboAI powie też, co nowego.";
   else if (u.checked_at) note = `Sprawdzono ${timeAgo(u.checked_at)} · ${u.repo}`;
   if (u.notes && (u.state === "ready" || u.state === "downloading")) note += `\nCo nowego: ${u.notes}`;
   $("up-note").textContent = note;

@@ -189,6 +189,7 @@ enum Cmd {
     Rhyme { nick: String, event: String, reply: tokio::sync::oneshot::Sender<Option<String>> },
     Ask { system: &'static str, prompt: String, reply: tokio::sync::oneshot::Sender<Option<String>> },
     Say(String),
+    AnnounceUpdate(String),
 }
 
 #[derive(Clone)]
@@ -246,6 +247,11 @@ impl JarvisHandle {
     /// Przeczytaj na głos (gdy głos włączony i LimboAI nic nie robi).
     pub fn say(&self, text: String) {
         let _ = self.tx.send(Cmd::Say(text));
+    }
+
+    /// Nowa wersja pobrana — LimboAI ogłasza ją i pyta, czy zainstalować (gdy skończy, co robi).
+    pub fn announce_update(&self, version: String) {
+        let _ = self.tx.send(Cmd::AnnounceUpdate(version));
     }
 
     /// Ktoś oznaczył streamera — Jarvis może to przeczytać na głos.
@@ -526,6 +532,7 @@ pub fn spawn(
                     _ => {}
                 },
                 Cmd::Mention { name, text } => read_mention(&shared, &name, &text),
+                Cmd::AnnounceUpdate(version) => announce_update(&shared, version),
                 Cmd::Rhyme { nick, event, reply } => {
                     let shared = shared.clone();
                     tokio::spawn(async move {
@@ -1079,6 +1086,28 @@ fn handle_reminder(shared: &Arc<Shared>, cmd: tools::ReminderCmd) {
     }
 }
 
+/// Ogłoszenie nowej wersji: czeka (do 30 min), aż LimboAI nic nie robi, potem pyta streamera.
+fn announce_update(shared: &Arc<Shared>, version: String) {
+    let shared = shared.clone();
+    tokio::spawn(async move {
+        for _ in 0..360 {
+            if shared.phase() == Phase::Idle && !shared.enrolling.load(Ordering::Relaxed) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+        let text = format!("Jest nowa wersja LiMBOCHAT {version}. Zainstalować teraz? Powiedz „zainstaluj” albo zapytaj, co nowego.");
+        shared.notice(None, format!("⬆ {text}"), false);
+        let config = shared.config();
+        if config.enabled && config.voice && shared.phase() == Phase::Idle {
+            shared.voice.chime(Chime::Listen);
+            shared.emit(JarvisEvent::Reply { text: text.clone() });
+            shared.hold_wake(Duration::from_secs_f32(Voice::estimate_seconds(&text) + 1.0));
+            speak_later(&shared, text);
+        }
+    });
+}
+
 fn read_mention(shared: &Arc<Shared>, name: &str, text: &str) {
     let config = shared.config();
     if !config.enabled || !config.read_mentions || !config.voice || shared.phase() != Phase::Idle || shared.enrolling.load(Ordering::Relaxed) {
@@ -1255,6 +1284,13 @@ fn system_prompt(ctx: &tools::Context, stream: &Option<(String, String)>, pendin
         ),
         _ => "\n- OBS: brak połączenia (sterowanie OBS niedostępne — powiedz, jak je włączyć: ⚙ → OBS).".to_owned(),
     };
+    let update = ctx.update.as_ref().map_or(String::new(), |(version, notes)| {
+        let notes = if notes.trim().is_empty() { "(brak opisu)".to_owned() } else { notes.replace('\n', " ") };
+        format!(
+            "\n- AKTUALIZACJA: pobrana nowa wersja LiMBOCHAT {version}, czeka na zgodę streamera (mogłeś już o nią zapytać). Zmiany: {notes}. \
+„Zainstaluj”, „tak, zainstaluj”, „aktualizuj” → install_update. „Co nowego?” → opowiedz zmiany własnymi słowami (bez emoji). Nie instaluj bez prośby."
+        )
+    });
     let memory = if ctx.memory.is_empty() {
         String::new()
     } else {
@@ -1289,7 +1325,7 @@ Kontekst:
 - Twój kanał (zalogowany streamer): {me} — tu zmieniasz kategorię, tytuł, robisz klipy, markery, raidy, ankiety i reklamy.
 - Kanał otwarty w panelu (moderacja czatu, wiadomości): {active}
 - Stream: {stream}
-- Osoby na czacie (ostatnio piszące): {chatters}{obs}{memory}{pending}"
+- Osoby na czacie (ostatnio piszące): {chatters}{obs}{memory}{update}{pending}"
     )
 }
 
