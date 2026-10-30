@@ -78,6 +78,7 @@ pub async fn synthesize(http: &reqwest::Client, key: &str, voice: &str, text: &s
         .await
         .context("Brak połączenia z Gemini (głos)")?;
     let status = resp.status();
+    super::usage::record(super::usage::Kind::Voice, status.as_u16());
     let value: Value = resp.json().await.context("Niezrozumiała odpowiedź Gemini (głos)")?;
     if !status.is_success() {
         return Err(anyhow!(describe_error(status.as_u16(), &value)));

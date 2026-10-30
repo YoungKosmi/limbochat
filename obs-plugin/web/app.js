@@ -2222,8 +2222,25 @@ function renderJarvisSettings() {
     field.querySelector("input").placeholder = has ? "wklej nowy klucz, aby zmienić…" : "wklej klucz API…";
   }
   $("jv-voice-note").hidden = j.polish_voice !== false;
+  renderUsage(j.usage);
   $("jv-test").disabled = !c.enabled;
   renderWake();
+}
+
+// Licznik zapytań do AI — dzień Google zaczyna się o północy czasu pacyficznego (ok. 9:00 u nas).
+function renderUsage(u) {
+  const box = $("jv-usage");
+  if (!u) { box.textContent = ""; return; }
+  const parts = [
+    `Gemini: ${u.gemini || 0}`,
+    `głos Gemini: ${u.voice || 0}`,
+    `rozpoznawanie mowy: ${(u.groq || 0) + (u.listen || 0)}`,
+  ];
+  if (u.custom) parts.push(`własny model: ${u.custom}`);
+  let text = `${parts.join(" · ")} zapytań (licznik od ok. 9:00).`;
+  if (u.limited) text += ` Limit wyczerpany ${u.limited}× — LimboAI mógł wtedy nie odpowiedzieć albo mówić głosem systemowym.`;
+  text += " Limity konta Gemini: aistudio.google.com/rate-limit";
+  box.textContent = text;
 }
 
 function saveJarvis(patch = {}) {

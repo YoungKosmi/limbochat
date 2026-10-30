@@ -38,6 +38,7 @@ pub async fn generate(
         .await
         .context("Brak połączenia z Gemini")?;
     let status = resp.status();
+    super::usage::record(super::usage::Kind::Gemini, status.as_u16());
     let value: Value = resp.json().await.context("Niezrozumiała odpowiedź Gemini")?;
     if !status.is_success() {
         return Err(anyhow!(describe_error(status.as_u16(), &value)));
@@ -69,6 +70,7 @@ pub async fn generate_text(http: &reqwest::Client, key: &str, model: &str, syste
         .await
         .context("Brak połączenia z Gemini")?;
     let status = resp.status();
+    super::usage::record(super::usage::Kind::Gemini, status.as_u16());
     let value: Value = resp.json().await.context("Niezrozumiała odpowiedź Gemini")?;
     if !status.is_success() {
         return Err(anyhow!(describe_error(status.as_u16(), &value)));
