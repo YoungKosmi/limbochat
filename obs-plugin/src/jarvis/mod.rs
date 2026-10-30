@@ -6,7 +6,8 @@
 //!    kanał, tytuł, kategorię, osoby z czatu),
 //! 3. rozpoznanie mowy: Groq Whisper (lub zapasowo Gemini),
 //! 4. Gemini z narzędziami decyduje, co zrobić; wykonujemy akcje na Twitchu,
-//! 5. odpowiedź: napis w panelu + polski głos systemowy.
+//! 5. odpowiedź: napis w panelu + głos: naturalny Gemini (moduł `tts`),
+//!    a gdy niedostępny — polski głos systemowy.
 //!
 //! Ponowne naciśnięcie skrótu w trakcie słuchania kończy nagrywanie od razu;
 //! w trakcie mówienia — ucisza Jarvisa i zaczyna słuchać nowej komendy.
@@ -23,7 +24,9 @@ pub mod openai;
 pub mod secrets;
 pub mod stt;
 pub mod tools;
+pub mod tts;
 pub mod twitch;
+pub mod usage;
 pub mod voice;
 pub mod wake;
 
@@ -54,6 +57,10 @@ use voice::{Chime, Voice};
 const MEMORY: Duration = Duration::from_secs(90);
 const MAX_ROUNDS: usize = 5;
 const MAX_HISTORY: usize = 30;
+/// Najdłużej czekamy na głos Gemini, potem mówi głos systemowy.
+const TTS_TIMEOUT: Duration = Duration::from_secs(8);
+/// Po błędzie głosu Gemini (limit, brak sieci) przez ten czas mówi od razu głos systemowy.
+const TTS_PAUSE: Duration = Duration::from_secs(5 * 60);
 
 pub const MODELS: &[(&str, &str)] = &[
     ("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite — najszybszy"),
@@ -66,6 +73,10 @@ pub struct JarvisConfig {
     pub enabled: bool,
     pub voice: bool,
     pub voice_volume:u8,
+    /// Głos: `gemini` (naturalny, w chmurze; zapasowo systemowy) albo `system` (głos Windows).
+    pub voice_engine: String,
+    /// Głos Gemini — nazwa z `tts::VOICES`.
+    pub tts_voice: String,
     pub hotkey: Vec<String>,
     pub mic: Option<String>,
     pub model: String,
@@ -92,6 +103,8 @@ impl Default for JarvisConfig {
             enabled: true,
             voice: true,
             voice_volume:100,
+            voice_engine: "gemini".into(),
+            tts_voice: tts::DEFAULT_VOICE.into(),
             hotkey: vec!["Shift".into(), "Z".into(), "X".into()],
             mic: None,
             model: MODELS[0].0.into(),
@@ -128,6 +141,10 @@ pub struct JarvisStatus {
     pub polish_voice: Option<bool>,
     pub hotkey_supported: bool,
     pub models: Vec<(String, String)>,
+    /// Głosy Gemini do wyboru (nazwa, opis).
+    pub tts_voices: Vec<(String, String)>,
+    /// Zapytania do AI dzisiaj (dzień Google).
+    pub usage: usage::Usage,
     pub busy: bool,
     /// Czy „Hej Limbo” jest nauczone (3 nagrania zapisane).
     pub wake_trained: bool,
@@ -281,6 +298,8 @@ struct Shared {
     /// Rymowanki: jedna naraz, z odstępem; kolejka najwyżej kilku.
     rhyme_gate: tokio::sync::Mutex<Option<Instant>>,
     rhyme_waiting: std::sync::atomic::AtomicUsize,
+    /// Do tej chwili głos Gemini wstrzymany po błędzie (mówi głos systemowy).
+    tts_pause: Mutex<Option<Instant>>,
 }
 
 impl Shared {
@@ -359,6 +378,7 @@ pub fn spawn(
         s.config = config.clone();
         s.hotkey_supported = hotkey::SUPPORTED;
         s.models = MODELS.iter().map(|(id, label)| ((*id).into(), (*label).into())).collect();
+        s.tts_voices = tts::VOICES.iter().map(|(id, label)| ((*id).into(), (*label).into())).collect();
         s.llm_presets = openai::PRESETS
             .iter()
             .map(|(id, name, url, model, needs_key)| LlmPreset {
@@ -398,6 +418,7 @@ pub fn spawn(
         idle: Arc::new(AtomicBool::new(true)),
         rhyme_gate: tokio::sync::Mutex::new(None),
         rhyme_waiting: std::sync::atomic::AtomicUsize::new(0),
+        tts_pause: Mutex::new(None),
     });
 
     let hotkey_tx = tx.clone();
@@ -523,7 +544,7 @@ pub fn spawn(
                     if config.enabled && config.voice && shared.phase() == Phase::Idle && !shared.enrolling.load(Ordering::Relaxed) {
                         let text = clean_reply(&text);
                         shared.hold_wake(Duration::from_secs_f32(Voice::estimate_seconds(&text) + 1.0));
-                        shared.voice.say(&text);
+                        speak_later(&shared, text);
                     }
                 }
             }
@@ -554,6 +575,7 @@ async fn refresh_status(shared: &Arc<Shared>) {
         s.polish_voice = shared.voice.polish_voice();
         s.busy = shared.phase() != Phase::Idle;
         s.wake_trained = wake::load_model().is_some();
+        s.usage = usage::today();
         s.clone()
     };
     shared.emit(JarvisEvent::Status(status));
@@ -756,8 +778,8 @@ async fn respond(
     }
     if shared.config().voice {
         shared.set_phase(Phase::Speaking);
-        shared.voice.say(&reply);
-        tokio::time::sleep(Duration::from_secs_f32(Voice::estimate_seconds(&reply))).await;
+        let length = speak(shared, &reply).await;
+        tokio::time::sleep(length).await;
     }
     if shared.session.load(Ordering::SeqCst) == id && shared.phase() != Phase::Listening {
         shared.set_phase(Phase::Idle);
@@ -1051,7 +1073,7 @@ fn handle_reminder(shared: &Arc<Shared>, cmd: tools::ReminderCmd) {
                 shared.notice(None, format!("⏰ Przypomnienie: {text}"), false);
                 let speech = format!("Przypomnienie: {text}");
                 shared.hold_wake(Duration::from_secs_f32(Voice::estimate_seconds(&speech) + 1.0));
-                shared.voice.say(&speech);
+                speak_later(&shared, speech);
             });
         }
     }
@@ -1072,7 +1094,47 @@ fn read_mention(shared: &Arc<Shared>, name: &str, text: &str) {
     let text: String = text.chars().take(160).collect();
     let speech = format!("{name} pisze: {text}");
     shared.hold_wake(Duration::from_secs_f32(Voice::estimate_seconds(&speech) + 1.0));
-    shared.voice.say(&speech);
+    speak_later(shared, speech);
+}
+
+// ── Głos ───────────────────────────────────────────────────────────────
+
+/// Mówi tekst: naturalnym głosem Gemini (gdy wybrany i dostępny), inaczej głosem systemowym.
+/// Zwraca czas wypowiedzi liczony od chwili, gdy zaczyna być słyszana.
+async fn speak(shared: &Arc<Shared>, text: &str) -> Duration {
+    let estimate = Duration::from_secs_f32(Voice::estimate_seconds(text));
+    let config = shared.config();
+    let paused = shared.tts_pause.lock().unwrap_or_else(|e| e.into_inner()).is_some_and(|until| Instant::now() < until);
+    if config.voice_engine != "gemini" || shared.demo || paused {
+        shared.voice.say(text);
+        return estimate;
+    }
+    let ticket = shared.voice.claim();
+    let Some(key) = secrets::load(Provider::Gemini).await else {
+        shared.voice.say_if(ticket, text);
+        return estimate;
+    };
+    let failure = match tokio::time::timeout(TTS_TIMEOUT, tts::synthesize(&shared.http, &key, &config.tts_voice, text)).await {
+        Ok(Ok(speech)) => {
+            // Uciszony w międzyczasie (np. nowa komenda) — nic nie gra, nie ma na co czekać.
+            return if shared.voice.play_speech(ticket, &speech) { speech.duration() } else { Duration::ZERO };
+        }
+        Ok(Err(e)) => format!("{e:#}"),
+        Err(_) => "brak odpowiedzi w czasie".to_owned(),
+    };
+    tracing::warn!("głos Gemini niedostępny ({failure}) — przez kilka minut mówi głos systemowy");
+    *shared.tts_pause.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now() + TTS_PAUSE);
+    shared.voice.say_if(ticket, text);
+    estimate
+}
+
+/// `speak` w tle (przypomnienia, wzmianki, „przeczytaj”) — pauza „Hej Limbo” na czas mówienia.
+fn speak_later(shared: &Arc<Shared>, text: String) {
+    let shared = shared.clone();
+    tokio::spawn(async move {
+        let length = speak(&shared, &text).await;
+        shared.hold_wake(length + Duration::from_secs(1));
+    });
 }
 
 /// Krótki opis streamu do kontekstu (tytuł, kategoria) — pobierany w tle.
