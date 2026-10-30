@@ -46,8 +46,9 @@ jobs:
           key: wydanie-cargo-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '.cargo/config.toml') }}
           restore-keys: wydanie-cargo-
 
+      # pwsh (PowerShell 7) czyta skrypty kroków jako UTF-8 — Windows PowerShell 5.1 psuł polskie znaki.
       - name: Klucz podpisu i konfiguracja aktualizacji
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           if (-not $env:SIGNING_KEY) { throw 'Brak sekretu LIMBOCHAT_SIGNING_KEY (Settings → Secrets and variables → Actions).' }
@@ -63,7 +64,7 @@ jobs:
           [IO.File]::WriteAllText('aktualizacje-klucz-publiczny.txt', $pub, $utf8)
 
       - name: Klucz pasuje do poprzednich wydań
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
           $asset = 'limbochat-engine-windows-x64.exe'
@@ -78,7 +79,7 @@ jobs:
           Write-Host "Klucz pasuje do wydania $tag."
 
       - name: Wydanie
-        shell: powershell
+        shell: pwsh
         run: |
           $releaseArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'skrypty\wydaj-aktualizacje.ps1', '-Auto')
           if ($env:RELEASE_VERSION) { $releaseArgs += @('-ReleaseVersion', $env:RELEASE_VERSION) }
