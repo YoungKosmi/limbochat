@@ -158,7 +158,8 @@ function Publish-Source($repo, $message) {
         Say "Kod wysłany: https://github.com/$repo" 'Green'
     }
 
-    # Opis, strona i tematy repozytorium.
+    # Opis, strona i tematy repozytorium (w GitHub Actions pomijamy — token wydania nie ma prawa zmieniać ustawień repo).
+    if ($env:GITHUB_ACTIONS -eq 'true') { return $publishedHead }
     $about = @{
         description = 'Czat Twitcha w OBS: emotki 7TV, moderacja, asystent głosowy LimboAI, animowane alerty, overlay i autoaktualizacje. Rust.'
         homepage = "https://github.com/$repo/releases/latest"

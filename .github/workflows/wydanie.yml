@@ -1,0 +1,94 @@
+name: Wydanie aktualizacji
+
+# Przycisk w zakładce Actions: buduje, podpisuje i wydaje nową wersję LiMBOCHAT,
+# tak samo jak wydaj-automatycznie.bat na komputerze autora. Klucz podpisu jest
+# w sekrecie LIMBOCHAT_SIGNING_KEY (nigdy w kodzie ani w logach).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Numer wersji, np. 0.7.2 (puste = następny)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wydanie
+  cancel-in-progress: false
+
+jobs:
+  wydanie:
+    name: Zbuduj, podpisz i wydaj
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SIGNING_KEY: ${{ secrets.LIMBOCHAT_SIGNING_KEY }}
+      RELEASE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Rust stable
+        run: rustup update stable --no-self-update
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: wydanie-cargo-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '.cargo/config.toml') }}
+          restore-keys: wydanie-cargo-
+
+      - name: Klucz podpisu i konfiguracja aktualizacji
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:SIGNING_KEY) { throw 'Brak sekretu LIMBOCHAT_SIGNING_KEY (Settings → Secrets and variables → Actions).' }
+          $dir = Join-Path $env:USERPROFILE '.limbochat'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $utf8 = New-Object Text.UTF8Encoding $false
+          [IO.File]::WriteAllText((Join-Path $dir 'klucz-aktualizacji.key'), $env:SIGNING_KEY.Trim(), $utf8)
+          cargo build --locked --release -p limbochat-obs --bin limbochat-engine
+          if ($LASTEXITCODE -ne 0) { throw 'Budowanie nie powiodło się.' }
+          $pub = (& target\release\limbochat-engine.exe --pubkey (Join-Path $dir 'klucz-aktualizacji.key') | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $pub) { throw 'Sekret LIMBOCHAT_SIGNING_KEY ma zły format — wklej całą linijkę z pliku klucz-aktualizacji.key.' }
+          [IO.File]::WriteAllText('aktualizacje-repo.txt', '${{ github.repository }}', $utf8)
+          [IO.File]::WriteAllText('aktualizacje-klucz-publiczny.txt', $pub, $utf8)
+
+      - name: Klucz pasuje do poprzednich wydań
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $asset = 'limbochat-engine-windows-x64.exe'
+          $tag = (gh release view --repo '${{ github.repository }}' --json tagName --jq .tagName 2>$null)
+          if (-not $tag) { Write-Host 'Brak poprzednich wydań — nie ma czego porównać.'; exit 0 }
+          $prev = Join-Path $env:RUNNER_TEMP 'poprzednie'
+          gh release download $tag --repo '${{ github.repository }}' --pattern "$asset*" --dir $prev --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Nie udało się pobrać wydania $tag do porównania klucza." }
+          $env:LIMBOCHAT_UPDATE_PUBKEY = [IO.File]::ReadAllText('aktualizacje-klucz-publiczny.txt').Trim()
+          & target\release\limbochat-engine.exe --verify (Join-Path $prev $asset) $tag.TrimStart('v') $asset (Join-Path $prev "$asset.sig")
+          if ($LASTEXITCODE -ne 0) { throw "Klucz z sekretu NIE pasuje do wydania $tag — zainstalowane wtyczki odrzuciłyby tę aktualizację. Wklej do sekretu klucz z komputera autora." }
+          Write-Host "Klucz pasuje do wydania $tag."
+
+      - name: Wydanie
+        shell: powershell
+        run: |
+          $releaseArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'skrypty\wydaj-aktualizacje.ps1', '-Auto')
+          if ($env:RELEASE_VERSION) { $releaseArgs += @('-ReleaseVersion', $env:RELEASE_VERSION) }
+          & powershell @releaseArgs
+          exit $LASTEXITCODE
+
+      - name: Log wydania
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-wydania
+          path: wydania/ostatnie-wydanie.log
+          if-no-files-found: ignore
