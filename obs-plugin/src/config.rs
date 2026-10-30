@@ -19,8 +19,13 @@ pub struct Config {
     pub jarvis: crate::jarvis::JarvisConfig,
     /// Overlay LimboAI na stream (źródło przeglądarki /overlay).
     pub overlay: OverlayConfig,
-    /// Aktualizacje silnika: `auto` (same, gdy nic się nie dzieje) albo `ask`.
+    /// Aktualizacje silnika: `ask` (LimboAI ogłasza i pyta, instalacja na żądanie)
+    /// albo `auto` (same, gdy nic się nie dzieje).
     pub updates: String,
+    /// Ustawienia przeszły już zmianę domyślnego trybu aktualizacji na `ask`.
+    /// Brak pola w pliku = `false` (nie wartość z `Config::default()`).
+    #[serde(default)]
+    pub updates_v2: bool,
     /// Alerty (bitsy, suby, raidy, follow…) i rymowanki LimboAI.
     pub alerts: AlertsConfig,
     /// Obrazki z linków kappa.lol na czacie: `all`, `trusted` (sub/VIP/mod) albo `off`.
@@ -158,7 +163,8 @@ impl Default for Config {
             accent: DEFAULT_ACCENT.to_owned(),
             jarvis: crate::jarvis::JarvisConfig::default(),
             overlay: OverlayConfig::default(),
-            updates: "auto".to_owned(),
+            updates: "ask".to_owned(),
+            updates_v2: true,
             alerts: AlertsConfig::default(),
             media_previews: "all".to_owned(),
             greetings: GreetingsConfig::default(),
@@ -188,10 +194,21 @@ fn path() -> Option<PathBuf> {
 }
 
 pub fn load() -> Config {
-    path()
+    let mut config: Config = path()
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    migrate(&mut config);
+    config
+}
+
+/// Starsze ustawienia miały domyślnie `auto` — raz przełączamy na `ask`
+/// (LimboAI pyta o aktualizację). Potem wybór z panelu zostaje.
+fn migrate(config: &mut Config) {
+    if !config.updates_v2 {
+        config.updates = "ask".to_owned();
+        config.updates_v2 = true;
+    }
 }
 
 pub fn save(config: &Config) {
@@ -208,5 +225,21 @@ pub fn save(config: &Config) {
             }
         }
         Err(e) => tracing::warn!("nie udało się zapisać ustawień: {e}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_settings_switch_once_to_asking() {
+        let mut old: Config = serde_json::from_str(r#"{ "updates": "auto" }"#).unwrap();
+        migrate(&mut old);
+        assert_eq!((old.updates.as_str(), old.updates_v2), ("ask", true));
+        let mut chosen: Config = serde_json::from_str(r#"{ "updates": "auto", "updates_v2": true }"#).unwrap();
+        migrate(&mut chosen);
+        assert_eq!(chosen.updates, "auto", "wybór streamera z panelu zostaje");
+        assert_eq!(Config::default().updates, "ask");
     }
 }

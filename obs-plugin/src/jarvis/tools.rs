@@ -43,6 +43,8 @@ pub struct Context {
     pub obs: Option<crate::obs::ObsStatus>,
     /// Pamięć o osobach z czatu: (nick, krótki opis).
     pub memory: Vec<(String, String)>,
+    /// Pobrana, gotowa do instalacji nowa wersja LiMBOCHAT: (numer, lista zmian).
+    pub update: Option<(String, String)>,
 }
 
 impl Context {
@@ -240,6 +242,29 @@ impl Executor {
                 }
                 None => fail("Nie znam tego koloru. Dostępne: fiolet, róż, czerwień, pomarańcz, złoto, zieleń, turkus, niebieski, srebro albo #RRGGBB."),
             },
+            "check_update" => {
+                let Some(hub) = &self.local.hub else { return Some(fail("Panel nie jest dostępny.")) };
+                match hub.check_update().await {
+                    Err(e) => fail(&e),
+                    Ok(s) => match s.state.as_str() {
+                        "ready" => {
+                            let version = s.available.unwrap_or_default();
+                            ok(json!({ "new_version": version, "current": s.version, "notes": s.notes, "ask": "zapytaj, czy zainstalować teraz" }), Some(format!("⬆ Jest nowa wersja {version}")))
+                        }
+                        "up_to_date" => ok(json!({ "up_to_date": true, "current": s.version }), Some(format!("✓ LiMBOCHAT {} jest aktualny", s.version))),
+                        "error" => fail(s.error.as_deref().unwrap_or("Nie udało się sprawdzić aktualizacji.")),
+                        _ => ok(json!({ "downloading": s.available, "info": "nowa wersja jeszcze się pobiera — LimboAI powie, gdy będzie gotowa" }), None),
+                    },
+                }
+            }
+            "install_update" => {
+                let Some((version, _)) = &ctx.update else {
+                    return Some(fail("Nie ma nowej wersji do zainstalowania — LiMBOCHAT jest aktualny albo aktualizacja jeszcze się pobiera."));
+                };
+                let Some(hub) = &self.local.hub else { return Some(fail("Panel nie jest dostępny.")) };
+                hub.install_update();
+                ok(json!({ "ok": true, "version": version, "when": "zaraz po tej odpowiedzi, bez restartu OBS" }), Some(format!("⬆ Instaluję LiMBOCHAT {version}")))
+            }
             "open_channel" => {
                 let Some(hub) = &self.local.hub else { return Some(fail("Panel nie jest dostępny.")) };
                 match hub.open_channel(s("channel")).await {
@@ -908,6 +933,8 @@ pub fn declarations() -> Value {
         { "name": "set_reminder", "description": "Ustawia przypomnienie — LimboAI powie je na głos po czasie.",
           "parameters": { "type": "object", "properties": { "seconds": { "type": "integer", "description": "Za ile sekund (max 6 h)" }, "text": { "type": "string", "description": "O czym przypomnieć" } }, "required": ["seconds", "text"] } },
         { "name": "cancel_reminders", "description": "Anuluje wszystkie przypomnienia." },
+        { "name": "check_update", "description": "Sprawdza od razu, czy jest nowa wersja LiMBOCHAT (pobiera ją, jeśli jest). Gdy jest — podaj numer i zapytaj, czy zainstalować." },
+        { "name": "install_update", "description": "Instaluje pobraną nową wersję LiMBOCHAT (bez restartu OBS, zaraz po tej odpowiedzi). Tylko gdy streamer o to prosi." },
         { "name": "pick_random_chatter", "description": "Losuje osobę spośród ostatnio piszących na czacie (np. do giveawaya)." },
         { "name": "obs_switch_scene", "description": "Przełącza scenę w OBS (np. Start, Gra, Przerwa, Koniec).",
           "parameters": { "type": "object", "properties": { "scene": { "type": "string", "description": "Nazwa sceny z listy scen OBS" } }, "required": ["scene"] } },
@@ -1036,6 +1063,16 @@ mod tests {
             ReminderCmd::Add { after, text } => assert_eq!((after.as_secs(), text.as_str()), (600, "napij się wody")),
             other => panic!("{other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn install_update_only_when_a_version_is_ready() {
+        let mut ex = Executor::new(None, Local::default());
+        let out = ex.run(&ctx(), "install_update", &json!({})).await;
+        assert!(out.action.as_ref().is_some_and(|a| !a.ok), "bez nowej wersji nie ma czego instalować");
+        let ready = Context { update: Some(("0.7.3".into(), "- Nowy głos".into())), ..ctx() };
+        let out = ex.run(&ready, "install_update", &json!({})).await;
+        assert!(out.action.as_ref().is_some_and(|a| !a.ok), "bez panelu (hub) instalacja niemożliwa");
     }
 
     #[test]
