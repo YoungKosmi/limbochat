@@ -63,6 +63,10 @@ pub enum Request {
     UpdateStatus(UpdateStatus),
     /// Streamer kazał LimboAI zainstalować aktualizację (gdy wszystko ucichnie).
     InstallUpdate,
+    /// „Sprawdź, czy jest nowa wersja” — odpowiedź po sprawdzeniu (najwyżej ~45 s).
+    CheckUpdate { reply: oneshot::Sender<Result<UpdateStatus, String>> },
+    /// Koniec sprawdzania na prośbę LimboAI.
+    VoiceCheckDone,
     /// LimboAI zrobił klip (do podsumowania streama).
     ClipMade(String),
     /// Podsumowanie słowami / tytuł streama dopisane po zakończeniu.
@@ -146,6 +150,13 @@ impl HubHandle {
         let _ = self.requests.send(Request::InstallUpdate);
     }
 
+    /// Sprawdza GitHuba od razu i czeka na wynik (albo ~45 s, gdy jeszcze się pobiera).
+    pub async fn check_update(&self) -> Result<UpdateStatus, String> {
+        let (reply, rx) = oneshot::channel();
+        self.requests.send(Request::CheckUpdate { reply }).map_err(|_| "Panel LiMBOCHAT nie działa.".to_owned())?;
+        rx.await.unwrap_or_else(|_| Err("Sprawdzanie aktualizacji przerwane.".into()))
+    }
+
     pub async fn jarvis_context(&self) -> Option<jarvis::tools::Context> {
         let (reply, rx) = oneshot::channel();
         self.requests.send(Request::JarvisContext { reply }).ok()?;
@@ -204,6 +215,8 @@ pub struct Hub {
     announced_update: Option<String>,
     /// Streamer zgodził się na instalację — przy najbliższej ciszy.
     install_requested: bool,
+    /// LimboAI sam sprawdza aktualizację (odpowie streamerowi — bez osobnego ogłoszenia).
+    voice_check: bool,
     helix: Option<Arc<Helix>>,
     ui_tx: mpsc::UnboundedSender<UiEvent>,
     me: HubHandle,
@@ -289,6 +302,7 @@ impl Hub {
             updater: link.updater,
             announced_update: None,
             install_requested: false,
+            voice_check: false,
             helix,
             ui_tx: ui_tx.clone(),
             me: HubHandle { requests: requests.clone() },
@@ -479,6 +493,29 @@ impl Hub {
         (status.state == "ready").then(|| (status.available.clone().unwrap_or_default(), status.notes.clone().unwrap_or_default()))
     }
 
+    fn check_update_for_voice(&mut self, reply: oneshot::Sender<Result<UpdateStatus, String>>) {
+        let Some(updater) = self.updater.clone().filter(|u| u.status().enabled) else {
+            let _ = reply.send(Err("Ta kopia LiMBOCHAT nie ma włączonych aktualizacji.".into()));
+            return;
+        };
+        let before = updater.status().checked_at;
+        self.voice_check = true;
+        updater.check();
+        let me = self.me.clone();
+        tokio::spawn(async move {
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(45);
+            let status = loop {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                let s = updater.status();
+                if s.checked_at != before || tokio::time::Instant::now() >= deadline {
+                    break s;
+                }
+            };
+            let _ = me.requests.send(Request::VoiceCheckDone);
+            let _ = reply.send(Ok(status));
+        });
+    }
+
     /// W trybie „pytaj” LimboAI raz ogłasza każdą pobraną wersję.
     fn maybe_announce_update(&mut self, status: &UpdateStatus) {
         let Some(version) = status.available.clone().filter(|_| status.state == "ready") else { return };
@@ -486,6 +523,9 @@ impl Hub {
             return;
         }
         self.announced_update = Some(version.clone());
+        if self.voice_check {
+            return; // LimboAI właśnie o tym mówi w odpowiedzi na „sprawdź”
+        }
         if let Some(j) = &self.jarvis {
             j.announce_update(version);
         }
@@ -673,6 +713,8 @@ impl Hub {
                 self.maybe_announce_update(&status);
             }
             Request::InstallUpdate => self.install_requested = true,
+            Request::CheckUpdate { reply } => self.check_update_for_voice(reply),
+            Request::VoiceCheckDone => self.voice_check = false,
             Request::AlertRhyme { channel, id, rhyme } => self.on_rhyme(&channel, &id, rhyme),
             Request::ClipMade(url) => {
                 if let Some(st) = &mut self.stats {

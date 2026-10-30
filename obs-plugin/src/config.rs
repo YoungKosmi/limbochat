@@ -23,6 +23,8 @@ pub struct Config {
     /// albo `auto` (same, gdy nic się nie dzieje).
     pub updates: String,
     /// Ustawienia przeszły już zmianę domyślnego trybu aktualizacji na `ask`.
+    /// Brak pola w pliku = `false` (nie wartość z `Config::default()`).
+    #[serde(default)]
     pub updates_v2: bool,
     /// Alerty (bitsy, suby, raidy, follow…) i rymowanki LimboAI.
     pub alerts: AlertsConfig,
