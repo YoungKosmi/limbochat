@@ -451,7 +451,6 @@ pub fn cli_keygen(path: &Path) -> i32 {
     0
 }
 
-/// `--pubkey <plik>`: klucz publiczny dla istniejącego klucza prywatnego.
 /// `--verify <plik> <wersja> <nazwa> <podpis>`: czy podpis pasuje do klucza publicznego
 /// (`LIMBOCHAT_UPDATE_PUBKEY`). Wydanie z GitHuba sprawdza tak, czy klucz z sekretu
 /// jest tym samym kluczem, którym podpisano poprzednie wersje. 0 = pasuje.
@@ -473,6 +472,7 @@ pub fn cli_verify(file: &Path, version: &str, asset: &str, sig: &Path) -> i32 {
     }
 }
 
+/// `--pubkey <plik>`: klucz publiczny dla istniejącego klucza prywatnego.
 pub fn cli_pubkey(path: &Path) -> i32 {
     match load_signing_key(path) {
         Ok(key) => {
