@@ -45,6 +45,8 @@ pub struct Context {
     pub memory: Vec<(String, String)>,
     /// Pobrana, gotowa do instalacji nowa wersja LiMBOCHAT: (numer, lista zmian).
     pub update: Option<(String, String)>,
+    /// Wsparcie: ostatnie alerty (suby, bitsy, raidy, follow…) i suma od początku streama.
+    pub support: Value,
 }
 
 impl Context {
@@ -242,6 +244,10 @@ impl Executor {
                 }
                 None => fail("Nie znam tego koloru. Dostępne: fiolet, róż, czerwień, pomarańcz, złoto, zieleń, turkus, niebieski, srebro albo #RRGGBB."),
             },
+            "get_support" => ok(
+                if ctx.support.is_null() { json!({ "info": "brak alertów — kanał nie jest otwarty albo nikt jeszcze nie wspierał" }) } else { ctx.support.clone() },
+                None,
+            ),
             "check_update" => {
                 let Some(hub) = &self.local.hub else { return Some(fail("Panel nie jest dostępny.")) };
                 match hub.check_update().await {
@@ -518,9 +524,12 @@ async fn run_helix(helix: &Helix, ctx: &Context, own: &ChannelRef, name: &str, a
         }
         "create_clip" => {
             let url = helix.create_clip(&own.id).await.map_err(e)?;
+            // Link na czat (klip bywa gotowy dopiero po kilku sekundach — link zadziała, gdy się przetworzy).
+            let posted = args["send_to_chat"].as_bool().unwrap_or(false)
+                && helix.send_chat_message(&own.id, &format!("🎬 Klip: {url}")).await.is_ok();
             Outcome {
-                result: json!({ "ok": true, "url": url }),
-                action: Some(Action { text: "🎬 Klip utworzony".into(), ok: true, url: Some(url) }),
+                result: json!({ "ok": true, "url": url, "sent_to_chat": posted }),
+                action: Some(Action { text: if posted { "🎬 Klip utworzony i wysłany na czat".into() } else { "🎬 Klip utworzony".into() }, ok: true, url: Some(url) }),
             }
         }
         "create_marker" => {
@@ -748,6 +757,29 @@ pub(crate) fn best_match(spoken: &str, names: &[String]) -> Option<String> {
     }
 }
 
+/// Źródło dźwięku po polsku: „mikrofon” = pierwsze wejście mikrofonowe, „gra”/„muzyka”/„pulpit”
+/// po typowych nazwach, inaczej najbliższa nazwa z OBS.
+fn audio_input(wanted: &str, list: &[Value], names: &[String]) -> Option<String> {
+    let folded = fold(wanted);
+    if ["", "mikrofon", "mic", "mikrofonu", "mikrofonik", "glos", "głos"].contains(&folded.as_str()) {
+        return list
+            .iter()
+            .find(|i| i["inputKind"].as_str().is_some_and(|k| k.contains("input_capture")))
+            .and_then(|i| i["inputName"].as_str().map(str::to_owned))
+            .or_else(|| best_match("mic", names));
+    }
+    if let Some(name) = best_match(wanted, names) {
+        return Some(name);
+    }
+    let hints: &[&str] = match folded.as_str() {
+        "gra" | "gre" | "gry" | "game" => &["gra", "gry", "game"],
+        "muzyka" | "muzyke" | "muzyki" | "music" | "spotify" => &["muzyk", "music", "spotify"],
+        "pulpit" | "pulpitu" | "desktop" | "komputer" => &["pulpit", "desktop"],
+        _ => &[],
+    };
+    names.iter().find(|n| hints.iter().any(|h| fold(n).contains(h))).cloned()
+}
+
 /// Polecenia OBS (obs-websocket).
 async fn run_obs(obs: &crate::obs::ObsHandle, name: &str, args: &Value) -> Result<Outcome, String> {
     let s = |key: &str| args[key].as_str().unwrap_or_default().trim().to_owned();
@@ -764,16 +796,8 @@ async fn run_obs(obs: &crate::obs::ObsHandle, name: &str, args: &Value) -> Resul
             let list = inputs["inputs"].as_array().cloned().unwrap_or_default();
             let names: Vec<String> = list.iter().filter_map(|i| i["inputName"].as_str().map(str::to_owned)).collect();
             let wanted = s("source");
-            let micish = ["", "mikrofon", "mic", "mikrofonu", "mikrofonik", "glos", "głos"];
-            let input = if micish.contains(&fold(&wanted).as_str()) {
-                // Mikrofon: pierwsze wejście audio (WASAPI / Pulse / CoreAudio input capture).
-                list.iter()
-                    .find(|i| i["inputKind"].as_str().is_some_and(|k| k.contains("input_capture")))
-                    .and_then(|i| i["inputName"].as_str().map(str::to_owned))
-                    .or_else(|| best_match("mic", &names))
-            } else {
-                best_match(&wanted, &names)
-            }
+            // Mikrofon: pierwsze wejście audio (WASAPI / Pulse / CoreAudio input capture).
+            let input = audio_input(&wanted, &list, &names)
             .ok_or_else(|| format!("Nie znalazłem źródła dźwięku „{wanted}”. Źródła: {}.", names.join(", ")))?;
             let muted = match args["muted"].as_bool() {
                 Some(m) => {
@@ -783,6 +807,24 @@ async fn run_obs(obs: &crate::obs::ObsHandle, name: &str, args: &Value) -> Resul
                 None => obs.request("ToggleInputMute", json!({ "inputName": input })).await?["inputMuted"].as_bool().unwrap_or(true),
             };
             Ok(ok(json!({ "ok": true, "source": input, "muted": muted }), Some(format!("{} {input}", if muted { "🔇 Wyciszono" } else { "🔊 Włączono" }))))
+        }
+        "obs_set_volume" => {
+            let inputs = obs.request("GetInputList", json!({})).await?;
+            let list = inputs["inputs"].as_array().cloned().unwrap_or_default();
+            let names: Vec<String> = list.iter().filter_map(|i| i["inputName"].as_str().map(str::to_owned)).collect();
+            let wanted = s("source");
+            let input = audio_input(&wanted, &list, &names)
+                .ok_or_else(|| format!("Nie znalazłem źródła dźwięku „{wanted}”. Źródła: {}.", names.join(", ")))?;
+            let current = obs.request("GetInputVolume", json!({ "inputName": input })).await?["inputVolumeMul"].as_f64().unwrap_or(1.0);
+            let target = match (args["percent"].as_f64(), args["change"].as_str()) {
+                (Some(p), _) => p / 100.0,
+                (None, Some("up")) => (current * 2.0).max(0.1),
+                _ => current * 0.5, // „ścisz” = o połowę (−6 dB)
+            }
+            .clamp(0.0, 1.0);
+            obs.request("SetInputVolume", json!({ "inputName": input, "inputVolumeMul": target })).await?;
+            let percent = (target * 100.0).round() as u32;
+            Ok(ok(json!({ "ok": true, "source": input, "percent": percent }), Some(format!("🔉 {input}: {percent}%"))))
         }
         "obs_set_source_visible" => {
             let current = obs.request("GetCurrentProgramScene", json!({})).await?;
@@ -887,7 +929,9 @@ pub fn declarations() -> Value {
         { "name": "start_raid", "description": "Rozpoczyna raid na inny kanał (wymaga potwierdzenia).",
           "parameters": { "type": "object", "properties": { "channel": { "type": "string", "description": "Login kanału" } }, "required": ["channel"] } },
         { "name": "cancel_raid", "description": "Anuluje rozpoczęty raid." },
-        { "name": "create_clip", "description": "Tworzy klip z ostatnich sekund streamu." },
+        { "name": "create_clip", "description": "Tworzy klip z ostatnich sekund streamu. send_to_chat = wyślij link na czat (np. „zrób klipa i wrzuć na czat”).",
+          "parameters": { "type": "object", "properties": { "send_to_chat": { "type": "boolean" } } } },
+        { "name": "get_support", "description": "Kto ostatnio wspierał kanał (suby, bitsy, gifty, raidy, follow, nagrody) i suma od początku streama (bitsy, suby, top wspierający)." },
         { "name": "create_marker", "description": "Dodaje marker w nagraniu streamu (do późniejszego montażu).",
           "parameters": { "type": "object", "properties": { "description": { "type": "string" } } } },
         { "name": "run_ad", "description": "Puszcza reklamę (wymaga potwierdzenia).",
@@ -940,6 +984,11 @@ pub fn declarations() -> Value {
           "parameters": { "type": "object", "properties": { "scene": { "type": "string", "description": "Nazwa sceny z listy scen OBS" } }, "required": ["scene"] } },
         { "name": "obs_set_mute", "description": "Wycisza albo włącza źródło dźwięku w OBS. Bez nazwy = mikrofon. Bez muted = przełącza.",
           "parameters": { "type": "object", "properties": { "source": { "type": "string", "description": "Nazwa źródła dźwięku, np. Mikrofon, Dźwięk pulpitu, Muzyka" }, "muted": { "type": "boolean" } } } },
+        { "name": "obs_set_volume", "description": "Zmienia głośność źródła dźwięku w OBS: percent (0–100) albo change (down = ciszej, up = głośniej).",
+          "parameters": { "type": "object", "properties": {
+              "source": { "type": "string", "description": "Np. gra, muzyka, mikrofon, pulpit — albo nazwa źródła z OBS" },
+              "percent": { "type": "integer" },
+              "change": { "type": "string", "enum": ["down", "up"] } }, "required": ["source"] } },
         { "name": "obs_set_source_visible", "description": "Pokazuje albo chowa źródło na aktualnej scenie OBS (np. kamerkę).",
           "parameters": { "type": "object", "properties": { "source": { "type": "string", "description": "Nazwa źródła, np. Kamerka" }, "visible": { "type": "boolean" } }, "required": ["source", "visible"] } },
         { "name": "obs_recording", "description": "Nagrywanie w OBS: start, stop, pause, resume.",
@@ -1073,6 +1122,31 @@ mod tests {
         let ready = Context { update: Some(("0.7.3".into(), "- Nowy głos".into())), ..ctx() };
         let out = ex.run(&ready, "install_update", &json!({})).await;
         assert!(out.action.as_ref().is_some_and(|a| !a.ok), "bez panelu (hub) instalacja niemożliwa");
+    }
+
+    #[test]
+    fn audio_sources_by_polish_names() {
+        let list = vec![
+            json!({ "inputName": "Mic/Aux", "inputKind": "wasapi_input_capture" }),
+            json!({ "inputName": "Dźwięk pulpitu", "inputKind": "wasapi_output_capture" }),
+            json!({ "inputName": "Spotify", "inputKind": "wasapi_process_output_capture" }),
+            json!({ "inputName": "Game Capture", "inputKind": "game_capture" }),
+        ];
+        let names: Vec<String> = list.iter().map(|i| i["inputName"].as_str().unwrap().to_owned()).collect();
+        assert_eq!(audio_input("mikrofon", &list, &names).as_deref(), Some("Mic/Aux"));
+        assert_eq!(audio_input("muzykę", &list, &names).as_deref(), Some("Spotify"));
+        assert_eq!(audio_input("grę", &list, &names).as_deref(), Some("Game Capture"));
+        assert_eq!(audio_input("pulpit", &list, &names).as_deref(), Some("Dźwięk pulpitu"));
+    }
+
+    #[tokio::test]
+    async fn support_comes_from_context() {
+        let mut ex = Executor::new(None, Local::default());
+        let out = ex.run(&ctx(), "get_support", &json!({})).await;
+        assert!(out.result["info"].is_string());
+        let with = Context { support: json!({ "recent_alerts_newest_first": [{ "kind": "sub", "name": "Kasia" }] }), ..ctx() };
+        let out = ex.run(&with, "get_support", &json!({})).await;
+        assert_eq!(out.result["recent_alerts_newest_first"][0]["name"], "Kasia");
     }
 
     #[test]
