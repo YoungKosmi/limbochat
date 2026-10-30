@@ -452,6 +452,27 @@ pub fn cli_keygen(path: &Path) -> i32 {
 }
 
 /// `--pubkey <plik>`: klucz publiczny dla istniejącego klucza prywatnego.
+/// `--verify <plik> <wersja> <nazwa> <podpis>`: czy podpis pasuje do klucza publicznego
+/// (`LIMBOCHAT_UPDATE_PUBKEY`). Wydanie z GitHuba sprawdza tak, czy klucz z sekretu
+/// jest tym samym kluczem, którym podpisano poprzednie wersje. 0 = pasuje.
+pub fn cli_verify(file: &Path, version: &str, asset: &str, sig: &Path) -> i32 {
+    let Some(key) = public_key() else {
+        eprintln!("Brak klucza publicznego (LIMBOCHAT_UPDATE_PUBKEY).");
+        return 2;
+    };
+    let (Ok(bytes), Ok(sig)) = (std::fs::read(file), std::fs::read_to_string(sig)) else {
+        eprintln!("Nie mogę odczytać pliku albo podpisu.");
+        return 2;
+    };
+    match verify(&sig, &key, version, asset, &bytes) {
+        Ok(()) => 0,
+        Err(e) => {
+            eprintln!("{e}");
+            1
+        }
+    }
+}
+
 pub fn cli_pubkey(path: &Path) -> i32 {
     match load_signing_key(path) {
         Ok(key) => {

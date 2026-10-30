@@ -45,6 +45,7 @@ Nie uruchamiaj `cargo test --workspace` przed zbudowaniem aplikacji: `installer/
 1. Dopisz sprawdzone zmiany w `CHANGELOG.md` → „Następna wersja”.
 2. Uruchom testy. Sprawdź funkcje wymagające prawdziwego Twitcha/OBS i zapisz ograniczenia.
 3. Na komputerze autora uruchom `wydaj-automatycznie.bat` lub interaktywnie `wydaj-aktualizacje.bat`.
+   Albo bez komputera autora: zakładka **Actions** → **Wydanie aktualizacji** → **Run workflow** (gałąź `main`, numer wersji opcjonalny). Workflow buduje na Windows, podpisuje kluczem z sekretu `LIMBOCHAT_SIGNING_KEY`, sprawdza, że to ten sam klucz co w poprzednim wydaniu, i uruchamia ten sam skrypt `wydaj-aktualizacje.ps1 -Auto`. Log wydania jest w artefakcie `log-wydania`.
 
 Skrypt buduje silnik i DLL, podpisuje aktualizację, tworzy paczki, wysyła źródła, a następnie tworzy wydanie z tagiem wskazującym zwrócony commit źródeł. Istniejący tag lub wydanie blokuje ponowne użycie numeru. Opis jest przesyłany przez plik UTF-8. Nie usuwamy automatycznie wydania po błędzie sieci — najpierw trzeba sprawdzić, czy GitHub zdążył je utworzyć.
 

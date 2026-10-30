@@ -77,6 +77,7 @@ pub fn main() -> i32 {
         "--stop" => return cli_stop(),
         "--export-keys" => return crate::share::cli_export(Path::new(arg(1))),
         "--pubkey" => return update::cli_pubkey(Path::new(arg(1))),
+        "--verify" => return update::cli_verify(Path::new(arg(1)), arg(2), arg(3), Path::new(arg(4))),
         "--sign" => {
             return update::cli_sign(Path::new(arg(1)), arg(2), arg(3), Path::new(arg(4)), Path::new(arg(5)));
         }
