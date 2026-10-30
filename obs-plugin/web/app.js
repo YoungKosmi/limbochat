@@ -2183,6 +2183,17 @@ function renderJarvisSettings() {
   $("jv-enabled").checked = c.enabled;
   $("jv-voice").checked = c.voice;
   $("jv-volume").value=c.voice_volume??100;$("jv-volume-value").textContent=`${c.voice_volume??100}%`;
+  const natural = (c.voice_engine ?? "gemini") === "gemini";
+  for (const b of $("jv-voice-engine").children) b.classList.toggle("on", b.dataset.engine === (natural ? "gemini" : "system"));
+  const ttsVoice = $("jv-tts-voice");
+  ttsVoice.replaceChildren(...(j.tts_voices || []).map(([id, label]) => option(id, label)));
+  ttsVoice.value = c.tts_voice || "Kore";
+  ttsVoice.hidden = !natural;
+  $("jv-voice-engine-note").textContent = !natural
+    ? "Głos zainstalowany w Windows — działa bez internetu, ale brzmi sztucznie."
+    : j.gemini_key
+      ? "Brzmi jak człowiek. Odpowiedź startuje ok. 1–2 s później. Gdy Gemini nie działa (limit, brak internetu), LimboAI mówi głosem systemowym."
+      : "Potrzebny klucz Gemini (niżej) — bez niego LimboAI mówi głosem systemowym.";
   if (!hotkeyRec) renderKeys(c.hotkey);
   const hold = c.talk_mode === "hold";
   for (const b of $("jv-talk").children) b.classList.toggle("on", b.dataset.mode === (hold ? "hold" : "toggle"));
@@ -2211,8 +2222,25 @@ function renderJarvisSettings() {
     field.querySelector("input").placeholder = has ? "wklej nowy klucz, aby zmienić…" : "wklej klucz API…";
   }
   $("jv-voice-note").hidden = j.polish_voice !== false;
+  renderUsage(j.usage);
   $("jv-test").disabled = !c.enabled;
   renderWake();
+}
+
+// Licznik zapytań do AI — dzień Google zaczyna się o północy czasu pacyficznego (ok. 9:00 u nas).
+function renderUsage(u) {
+  const box = $("jv-usage");
+  if (!u) { box.textContent = ""; return; }
+  const parts = [
+    `Gemini: ${u.gemini || 0}`,
+    `głos Gemini: ${u.voice || 0}`,
+    `rozpoznawanie mowy: ${(u.groq || 0) + (u.listen || 0)}`,
+  ];
+  if (u.custom) parts.push(`własny model: ${u.custom}`);
+  let text = `${parts.join(" · ")} zapytań (licznik od ok. 9:00).`;
+  if (u.limited) text += ` Limit wyczerpany ${u.limited}× — LimboAI mógł wtedy nie odpowiedzieć albo mówić głosem systemowym.`;
+  text += " Limity konta Gemini: aistudio.google.com/rate-limit";
+  box.textContent = text;
 }
 
 function saveJarvis(patch = {}) {
@@ -2371,6 +2399,8 @@ $("jv-enabled").addEventListener("change", (e) => saveJarvis({ enabled: e.target
 $("jv-voice").addEventListener("change", (e) => saveJarvis({ voice: e.target.checked }));
 $("jv-volume").addEventListener("input",e=>$("jv-volume-value").textContent=`${e.target.value}%`);
 $("jv-volume").addEventListener("change",e=>saveJarvis({voice_volume:Number(e.target.value)}));
+for (const b of $("jv-voice-engine").children) b.addEventListener("click", () => saveJarvis({ voice_engine: b.dataset.engine }));
+$("jv-tts-voice").addEventListener("change", (e) => saveJarvis({ tts_voice: e.target.value }));
 $("jv-mic").addEventListener("change", (e) => saveJarvis({ mic: e.target.value || null }));
 $("jv-model").addEventListener("change", (e) => saveJarvis({ model: e.target.value }));
 for (const b of $("jv-talk").children) b.addEventListener("click", () => saveJarvis({ talk_mode: b.dataset.mode }));
