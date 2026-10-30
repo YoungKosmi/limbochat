@@ -29,6 +29,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File skrypty/testy.ps1
 
 CI wykonuje te kontrole na Windows przy pushu do `main` i dla pull requestów. Nie łączy się z kontem Twitch, mikrofonem ani OBS.
 
+IRC korzysta z systemowego TLS (`native-tls`; na Windows Schannel i magazyn certyfikatów systemu), aby nie wciągać przestarzałej gałęzi rustls z `twitch-irc` 5. HTTP i pozostałe WebSockety używają aktualnej gałęzi rustls z `Cargo.lock`. Na Linuxie kompilacja IRC wymaga bibliotek deweloperskich OpenSSL. Ręczny test samego połączenia TLS, bez logowania i wysyłania wiadomości: `cargo test --locked -p limbochat-obs --lib twitch_tls_handshake -- --ignored`.
+
 Nie uruchamiaj `cargo test --workspace` przed zbudowaniem aplikacji: `installer/build.rs` pakuje gotowy plik wykonywalny. Instalator buduj przez `build-installer.bat`. Wtyczkę z wbudowanym silnikiem buduje `install-obs-plugin.bat`.
 
 ## Numery wersji

@@ -33,7 +33,7 @@ async-trait = "0.1"   # trait EmoteSource (async + dyn)
 
 # ── Twitch IRC (anonimowy odczyt czatu; moderacja idzie przez Helix) ──
 twitch-irc = { version = "5", default-features = false, features = [
-    "transport-tcp-rustls-webpki-roots",
+    "transport-tcp-native-tls", # systemowy TLS; backend rustls w twitch-irc 5 używa starej gałęzi 0.21
     "with-serde",
 ] }
 

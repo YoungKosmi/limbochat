@@ -29,6 +29,18 @@ pub fn connect_anonymous() -> (UnboundedReceiver<ServerMessage>, AnonymousClient
     AnonymousClient::new(ClientConfig::default())
 }
 
+/// Ręczny test sieciowy: weryfikacja certyfikatu i połączenia TLS z Twitchem.
+#[cfg(test)]
+#[tokio::test]
+#[ignore = "wymaga dostępu do irc.chat.twitch.tv:6697"]
+async fn twitch_tls_handshake() {
+    use twitch_irc::transport::tcp::{MakeConnection, TLS};
+    tokio::time::timeout(std::time::Duration::from_secs(20), TLS::new_socket())
+        .await
+        .expect("przekroczono czas połączenia z Twitchem")
+        .expect("połączenie TLS z Twitchem");
+}
+
 /// Wynik tłumaczenia wiadomości IRC.
 #[derive(Debug)]
 pub enum IrcEvent {
