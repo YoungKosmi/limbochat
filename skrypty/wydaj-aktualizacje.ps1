@@ -11,6 +11,8 @@ if ($Auto) {
 if (-not (Use-UpdateConfig)) { Fail 'Najpierw uruchom ustaw-aktualizacje.bat (raz).' }
 if (-not (Test-Path $KeyFile)) { Fail "Brak klucza podpisu: $KeyFile — przywróć go z kopii albo uruchom ustaw-aktualizacje.bat." }
 $repo = $env:LIMBOCHAT_UPDATE_REPO
+# Najpierw zmiany z GitHuba (np. scalone Pull Requesty) — numer wersji i CHANGELOG też mogą być nowsze.
+Sync-BeforeRelease
 
 $current = Get-EngineVersion
 Write-Host ''
@@ -112,6 +114,7 @@ if (Get-Command gh -ErrorAction SilentlyContinue) {
         Fail 'GitHub zgłosił błąd publikacji. Źródła są wysłane; sprawdź wydanie i tag na GitHubie przed ponowną próbą. Numer wersji został zachowany.'
     }
     $script:Bumped = $false
+    Sync-AfterPublish $sourceCommit
     Write-Host ''
     Say '============================================================' 'Green'
     Say " Wydano LiMBOCHAT $version!" 'Green'

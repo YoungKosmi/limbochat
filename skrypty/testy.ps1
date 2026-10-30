@@ -64,6 +64,58 @@ try {
     $sha = Publish-Source 'test/fixture' 'test'
     Assert ($sha -eq 'head-sha' -and -not $script:RefUpdated) 'Niezmienione źródła powinny zwracać bieżący commit.'
 
+    # Zgodność folderu z GitHubem: prawdziwy git na lokalnych repozytoriach (bez sieci).
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        function Fail($text) { throw $text }
+        function Say($text, $color) {}
+        function G {
+            $ErrorActionPreference = 'Continue'
+            & git -c user.name=test -c user.email=test@example.com -c init.defaultBranch=main -c core.autocrlf=false @args *> $null
+            if ($LASTEXITCODE -ne 0) { throw "git $args" }
+        }
+        function Head($dir) { (& git -C $dir rev-parse HEAD).Trim() }
+        function Write-Fixture($dir, $name, $text) { [IO.File]::WriteAllText((Join-Path $dir $name), $text) }
+        $remote = Join-Path $fixture 'git-remote.git'
+        $work = Join-Path $fixture 'git-work'
+        $other = Join-Path $fixture 'git-other'
+        G init -q --bare $remote
+        G clone -q $remote $work
+        Write-Fixture $work 'a.txt' "1`n"
+        G -C $work add a.txt
+        G -C $work commit -q -m one
+        G -C $work push -q origin HEAD:main
+        # Ktoś inny (scalony Pull Request) dodaje zmianę na GitHubie.
+        G clone -q $remote $other
+        Write-Fixture $other 'b.txt' "2`n"
+        G -C $other add b.txt
+        G -C $other commit -q -m two
+        G -C $other push -q origin HEAD:main
+        $Root = $work
+        $script:GitState = $null
+        $failed = $false
+        try { Assert-SourceIncludes (Head $other) } catch { $failed = $true }
+        Assert $failed 'Wysłanie kodu bez zmian z GitHuba powinno się zatrzymać.'
+        Sync-BeforeRelease
+        Assert (Test-Path (Join-Path $work 'b.txt')) 'Przed wydaniem nie pobrano zmian z GitHuba.'
+        Assert-SourceIncludes (Head $other)
+        Write-Fixture $work 'c.txt' "3`n"
+        $failed = $false
+        try { Sync-BeforeRelease } catch { $failed = $true }
+        Assert $failed 'Wydanie z niezapisanymi plikami powinno się zatrzymać.'
+        Remove-Item (Join-Path $work 'c.txt')
+        # Wydanie: zmieniony folder trafia na GitHuba commitem utworzonym poza folderem (jak przez API).
+        Write-Fixture $work 'a.txt' "1.1`n"
+        G -C $other pull -q origin main
+        Write-Fixture $other 'a.txt' "1.1`n"
+        G -C $other commit -q -am release
+        G -C $other push -q origin HEAD:main
+        Sync-AfterPublish (Head $other)
+        Assert ((Head $work) -eq (Head $other)) 'Po wydaniu folder nie wskazuje opublikowanego commita.'
+        Assert (-not (& git -C $work status --porcelain)) 'Po wydaniu folder powinien być czysty.'
+        Assert ([IO.File]::ReadAllText((Join-Path $work 'a.txt')) -eq "1.1`n") 'Synchronizacja nie może zmieniać plików.'
+        Write-Host 'OK: pobieranie zmian przed wydaniem, ochrona przed nadpisaniem, czysty folder po wydaniu.' -ForegroundColor Green
+    }
+
     # Sprawdź składnię wszystkich skryptów także parserem hosta Windows PowerShell.
     foreach ($file in Get-ChildItem (Join-Path $project 'skrypty') -Filter '*.ps1' -File) {
         $parseErrors = $null
