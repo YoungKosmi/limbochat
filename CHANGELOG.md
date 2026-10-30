@@ -6,6 +6,7 @@ pokazuje się w panelu w okienku „Co nowego”.
 
 ## Następna wersja
 
+- 📊 **Zużycie AI dzisiaj** — w ⚙ → LimboAI widać, ile zapytań do Gemini (mózg i głos) oraz rozpoznawania mowy poszło od rana i czy skończył się limit.
 - 🗣️ **Naturalny głos LimboAI** — LimboAI mówi teraz głosem Gemini, który brzmi jak człowiek, a nie jak robot. Barwę głosu wybierzesz w ⚙ → LimboAI → Głos LimboAI. Gdy Gemini nie działa (limit, brak internetu), LimboAI sam wraca do głosu systemowego Windows.
 
 ## 0.7.0 — 2026-10-30

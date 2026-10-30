@@ -26,6 +26,7 @@ pub mod stt;
 pub mod tools;
 pub mod tts;
 pub mod twitch;
+pub mod usage;
 pub mod voice;
 pub mod wake;
 
@@ -142,6 +143,8 @@ pub struct JarvisStatus {
     pub models: Vec<(String, String)>,
     /// Głosy Gemini do wyboru (nazwa, opis).
     pub tts_voices: Vec<(String, String)>,
+    /// Zapytania do AI dzisiaj (dzień Google).
+    pub usage: usage::Usage,
     pub busy: bool,
     /// Czy „Hej Limbo” jest nauczone (3 nagrania zapisane).
     pub wake_trained: bool,
@@ -572,6 +575,7 @@ async fn refresh_status(shared: &Arc<Shared>) {
         s.polish_voice = shared.voice.polish_voice();
         s.busy = shared.phase() != Phase::Idle;
         s.wake_trained = wake::load_model().is_some();
+        s.usage = usage::today();
         s.clone()
     };
     shared.emit(JarvisEvent::Status(status));

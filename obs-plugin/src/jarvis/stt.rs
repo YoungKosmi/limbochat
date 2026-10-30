@@ -73,6 +73,7 @@ pub async fn transcribe_groq(http: &reqwest::Client, key: &str, wav: Vec<u8>, pr
         .context("Brak połączenia z Groq")?;
 
     let status = resp.status();
+    super::usage::record(super::usage::Kind::Groq, status.as_u16());
     if !status.is_success() {
         let message = resp.json::<ApiError>().await.unwrap_or_default().error.message;
         bail!(match status.as_u16() {
@@ -107,6 +108,7 @@ pub async fn transcribe_gemini(http: &reqwest::Client, key: &str, model: &str, w
         .await
         .context("Brak połączenia z Gemini")?;
     let status = resp.status();
+    super::usage::record(super::usage::Kind::Listen, status.as_u16());
     let value: serde_json::Value = resp.json().await.context("Niezrozumiała odpowiedź Gemini")?;
     if !status.is_success() {
         return Err(anyhow!(super::gemini::describe_error(status.as_u16(), &value)));
