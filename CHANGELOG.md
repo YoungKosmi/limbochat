@@ -6,6 +6,8 @@ pokazuje się w panelu w okienku „Co nowego”.
 
 ## Następna wersja
 
+- 🗣️ **Naturalny głos LimboAI** — LimboAI mówi teraz głosem Gemini, który brzmi jak człowiek, a nie jak robot. Barwę głosu wybierzesz w ⚙ → LimboAI → Głos LimboAI. Gdy Gemini nie działa (limit, brak internetu), LimboAI sam wraca do głosu systemowego Windows.
+
 ## 0.7.0 — 2026-10-30
 
 - **LiMBO Studio** — nowy panel z przycisku ✦ przy czacie: momenty, głosowania, gry, obraz, karta widza i profile.
