@@ -6,10 +6,13 @@ pokazuje się w panelu w okienku „Co nowego”.
 
 ## Następna wersja
 
+## 0.7.3 — 2026-10-31
+
 - 💬 **„Co nowego?”** — LimboAI opowiada, co zmieniła ostatnia aktualizacja (wcześniej mówił tylko, że wersja jest aktualna).
 - 🔉 **Głośność głosem** — „ścisz grę”, „muzyka na 30%”, „podgłośnij pulpit”.
 - 💜 **Kto wspierał** — „kto ostatnio zasubował?”, „ile dziś bitsów?”, „kto dał raid?”.
 - 🎬 **Klip na czat** — „zrób klipa i wrzuć na czat”: LimboAI robi klip i od razu wysyła link.
+
 ## 0.7.2 — 2026-10-30
 
 - ⬆️ **LimboAI pyta o aktualizacje** — gdy wyjdzie nowa wersja, LimboAI powie o tym i zapyta, czy zainstalować. Powiedz „zainstaluj”, a zrobi to od razu (bez restartu OBS), albo zapytaj „co nowego?”. Możesz też w każdej chwili powiedzieć „sprawdź, czy jest nowa wersja”. Bez odpowiedzi nic się nie dzieje — możesz zainstalować później w ⚙ → Aktualizacje. Wolisz jak dawniej? ⚙ → Aktualizacje → Automatycznie.
