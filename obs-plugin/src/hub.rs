@@ -484,7 +484,41 @@ impl Hub {
             obs: self.config.obs.enabled.then(|| self.obs.status()),
             chatters,
             update: self.ready_update(),
+            support: self.support_report(),
         }
+    }
+
+    /// Ostatnie alerty (własny kanał, a bez logowania — otwarty) i suma od początku streama.
+    fn support_report(&self) -> serde_json::Value {
+        let own = match &self.auth {
+            AuthState::LoggedIn { login, .. } => Some(login.as_str()),
+            _ => None,
+        };
+        let channel = own
+            .and_then(|login| self.channels.iter().find(|c| c.login == login))
+            .or_else(|| self.config.active.as_ref().and_then(|a| self.channels.iter().find(|c| &c.login == a)));
+        let now = chrono::Utc::now().timestamp_millis();
+        let recent: Vec<serde_json::Value> = channel
+            .map(|c| {
+                c.alerts
+                    .iter()
+                    .rev()
+                    .take(10)
+                    .filter_map(|m| {
+                        let a = m.alert.as_ref()?;
+                        Some(serde_json::json!({
+                            "kind": a.kind, "name": m.name, "amount": a.amount, "tier": a.tier, "target": a.target,
+                            "minutes_ago": (now - m.ts).max(0) / 60_000,
+                        }))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let stream = self.stats.as_ref().map(crate::summary::Stats::support_json);
+        if recent.is_empty() && stream.is_none() {
+            return serde_json::Value::Null;
+        }
+        serde_json::json!({ "channel": channel.map(|c| c.login.clone()), "recent_alerts_newest_first": recent, "this_stream": stream })
     }
 
     /// Pobrana nowa wersja czekająca na zgodę: (numer, zmiany).

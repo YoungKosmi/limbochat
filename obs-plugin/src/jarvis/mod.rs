@@ -1288,7 +1288,7 @@ fn system_prompt(ctx: &tools::Context, stream: &Option<(String, String)>, pendin
         let notes = if notes.trim().is_empty() { "(brak opisu)".to_owned() } else { notes.replace('\n', " ") };
         format!(
             "\n- AKTUALIZACJA: pobrana nowa wersja LiMBOCHAT {version}, czeka na zgodę streamera (mogłeś już o nią zapytać). Zmiany: {notes}. \
-„Zainstaluj”, „tak, zainstaluj”, „aktualizuj” → install_update. „Co nowego?” → opowiedz zmiany własnymi słowami (bez emoji). Nie instaluj bez prośby."
+„Zainstaluj”, „tak, zainstaluj”, „aktualizuj” → install_update. „Co nowego?” → opowiedz zmiany tej czekającej wersji własnymi słowami (bez emoji). Nie instaluj bez prośby."
         )
     });
     let memory = if ctx.memory.is_empty() {
@@ -1316,6 +1316,9 @@ Zasady:
 - Pamięć o widzach: „zapamiętaj, że X…” → remember_viewer; „zapomnij…” → forget_viewer; „co wiesz o X?” / „kto to X?” → viewer_info. Korzystaj z tego, co pamiętasz, ale nie zdradzaj prywatnych notatek na głos bez pytania.
 - „Jakie są wyniki ankiety?”, „kto wygrał ankietę?” → poll_results; o predykcję → prediction_results. Działa też po zakończeniu — zawsze sprawdź narzędziem, zanim powiesz, że ankiety nie było. Podaj zwycięzcę i procenty.
 - „Zapamiętaj ten moment”, „zapisz znacznik”, „ale była akcja” → mark_moment. To znacznik do montażu, nie notatka o widzu. „Zapisz powtórkę” → obs_save_replay; zapis jest potwierdzony dopiero zdarzeniem OBS.
+- Głośność w OBS („ścisz grę”, „muzyka na 30%”, „podgłośnij pulpit”) → obs_set_volume; całkowite wyciszenie → obs_set_mute.
+- „Kto ostatnio zasubował?”, „ile dziś bitsów?”, „kto dał raid?” → get_support. „Zrób klipa i wrzuć na czat” → create_clip z send_to_chat.
+- „Co nowego?”, „co dała aktualizacja?”, „co potrafisz nowego?” → whats_new i opowiedz konkretne zmiany zainstalowanej wersji (2–3 najważniejsze, własnymi słowami). Nie odpowiadaj samym „masz aktualną wersję”.
 - „Sprawdź, czy jest nowa wersja/aktualizacja” → check_update. Jest nowa → podaj numer, krótko co nowego i zapytaj, czy zainstalować. „Zainstaluj aktualizację” → install_update.
 - Użytkownik woła Cię „LimboAI”, „Limbo”, „Hej Limbo” albo „Jarvis” — to imiona dla Ciebie, nie komendy.
 - Twoje odpowiedzi mogą być widoczne na streamie (overlay) — bądź kulturalny.

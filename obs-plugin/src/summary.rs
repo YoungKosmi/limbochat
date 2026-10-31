@@ -39,6 +39,22 @@ pub struct Stats {
 }
 
 impl Stats {
+    /// Wsparcie od początku streama — dla LimboAI („ile dziś bitsów?”).
+    pub fn support_json(&self) -> serde_json::Value {
+        let mut top: Vec<(String, u64)> = self.supporters.values().cloned().collect();
+        top.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        serde_json::json!({
+            "since": self.started_at.with_timezone(&chrono::Local).format("%H:%M").to_string(),
+            "bits": self.bits,
+            "subs": self.subs,
+            "resubs": self.resubs,
+            "gifted_subs": self.gifts,
+            "follows": self.follows,
+            "raids": self.raids.iter().map(|(n, v)| serde_json::json!({ "from": n, "viewers": v })).collect::<Vec<_>>(),
+            "top_supporters": top.into_iter().take(3).map(|(n, v)| serde_json::json!({ "name": n, "value": v })).collect::<Vec<_>>(),
+        })
+    }
+
     pub fn start(channel: &str, started_at: DateTime<Utc>) -> Self {
         Self {
             id: started_at.timestamp_millis() as u64,
