@@ -6,6 +6,8 @@ pokazuje się w panelu w okienku „Co nowego”.
 
 ## Następna wersja
 
+- 🗣️ **Głos się nie przełącza w kółko** — gdy skończy się dzienny limit naturalnego głosu, LimboAI mówi głosem systemowym do ok. 9:00 (wcześniej co 5 min próbował wrócić) i pisze o tym w panelu.
+- 🔉 **Lepsze ściszanie** — „ścisz”/„podgłośnij” zmienia głośność wyraźniej, a „ścisz przeglądarkę” działa ze źródłem Przeglądarka. Jeśli przeglądarka gra poza OBS, LimboAI powie, co zaznaczyć.
 ## 0.7.3 — 2026-10-31
 
 - 💬 **„Co nowego?”** — LimboAI opowiada, co zmieniła ostatnia aktualizacja (wcześniej mówił tylko, że wersja jest aktualna).
