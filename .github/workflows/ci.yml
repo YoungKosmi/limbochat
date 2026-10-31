@@ -3,7 +3,11 @@ name: CI
 on:
   push:
     branches: [main]
+    # Same opisy (README, docs) nie uruchamiają kompilacji; CHANGELOG tak — jest wbudowany w silnik.
+    paths: ['**', '!**.md', '!docs/**', '!.github/ISSUE_TEMPLATE/**', 'CHANGELOG.md']
   pull_request:
+    # Same opisy (README, docs) nie uruchamiają kompilacji; CHANGELOG tak — jest wbudowany w silnik.
+    paths: ['**', '!**.md', '!docs/**', '!.github/ISSUE_TEMPLATE/**', 'CHANGELOG.md']
   workflow_dispatch:
 
 permissions:
@@ -24,14 +28,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Rust stable
         run: rustup update stable --no-self-update
+      # Pamięć kompilacji: przy zmianie Cargo.lock (np. numer wersji po wydaniu) bierze
+      # poprzednią zamiast budować wszystko od zera (~3 min zamiast ~16).
       - name: Cache Cargo
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: windows-cargo-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '.cargo/config.toml') }}
+          shared-key: windows-ci
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Testy silnika, aplikacji PC i wtyczki OBS
         run: cargo +stable test --locked -p limbochat-obs -p limbochat -p limbochat-obs-launcher
       - name: Składnia panelu

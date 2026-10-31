@@ -30,6 +30,11 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SIGNING_KEY: ${{ secrets.LIMBOCHAT_SIGNING_KEY }}
       RELEASE_VERSION: ${{ inputs.version }}
+      # Wbudowywane w silnik od pierwszego budowania — skrypt wydania ustawia te same
+      # wartości, więc cargo nie buduje silnika drugi raz. Klucz publiczny nie jest tajny
+      # (sprawdzony: pasuje do podpisu wydania 0.7.2); niżej porównujemy go z sekretem.
+      LIMBOCHAT_UPDATE_REPO: ${{ github.repository }}
+      LIMBOCHAT_UPDATE_PUBKEY: J+HJZkBIp3Thsb3zI3mgOFuL5ft6+BVKfigDfDC1WUM=
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,14 +42,9 @@ jobs:
       - name: Rust stable
         run: rustup update stable --no-self-update
       - name: Cache Cargo
-        uses: actions/cache@v4
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: wydanie-cargo-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '.cargo/config.toml') }}
-          restore-keys: wydanie-cargo-
+          shared-key: windows-wydanie
 
       # pwsh (PowerShell 7) czyta skrypty kroków jako UTF-8 — Windows PowerShell 5.1 psuł polskie znaki.
       - name: Klucz podpisu i konfiguracja aktualizacji
@@ -56,10 +56,12 @@ jobs:
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
           $utf8 = New-Object Text.UTF8Encoding $false
           [IO.File]::WriteAllText((Join-Path $dir 'klucz-aktualizacji.key'), $env:SIGNING_KEY.Trim(), $utf8)
+          # Jedyne budowanie silnika: z wbudowanym repo i kluczem (env joba), więc skrypt wydania go nie powtórzy.
           cargo build --locked --release -p limbochat-obs --bin limbochat-engine
           if ($LASTEXITCODE -ne 0) { throw 'Budowanie nie powiodło się.' }
           $pub = (& target\release\limbochat-engine.exe --pubkey (Join-Path $dir 'klucz-aktualizacji.key') | Out-String).Trim()
           if ($LASTEXITCODE -ne 0 -or -not $pub) { throw 'Sekret LIMBOCHAT_SIGNING_KEY ma zły format — wklej całą linijkę z pliku klucz-aktualizacji.key.' }
+          if ($pub -ne $env:LIMBOCHAT_UPDATE_PUBKEY) { throw 'Klucz z sekretu LIMBOCHAT_SIGNING_KEY nie pasuje do klucza publicznego wbudowanego w wydania — zainstalowane wtyczki odrzuciłyby aktualizację.' }
           [IO.File]::WriteAllText('aktualizacje-repo.txt', '${{ github.repository }}', $utf8)
           [IO.File]::WriteAllText('aktualizacje-klucz-publiczny.txt', $pub, $utf8)
 
