@@ -780,13 +780,37 @@ fn audio_input(wanted: &str, list: &[Value], names: &[String]) -> Option<String>
     if let Some(name) = best_match(wanted, names) {
         return Some(name);
     }
+    // „Przeglądarka” (YouTube, alerty…) = źródło typu przeglądarka, jeśli jest jedno.
+    if folded.starts_with("przegladar") || ["browser", "youtube", "yt", "chrome", "strona"].contains(&folded.as_str()) {
+        let browsers: Vec<&Value> = list.iter().filter(|i| i["inputKind"].as_str() == Some("browser_source")).collect();
+        if let [only] = browsers.as_slice() {
+            return only["inputName"].as_str().map(str::to_owned);
+        }
+    }
     let hints: &[&str] = match folded.as_str() {
         "gra" | "gre" | "gry" | "game" => &["gra", "gry", "game"],
         "muzyka" | "muzyke" | "muzyki" | "music" | "spotify" => &["muzyk", "music", "spotify"],
         "pulpit" | "pulpitu" | "desktop" | "komputer" => &["pulpit", "desktop"],
+        f if f.starts_with("przegladar") || f == "browser" || f == "youtube" => &["przegl", "browser", "youtube"],
         _ => &[],
     };
     names.iter().find(|n| hints.iter().any(|h| fold(n).contains(h))).cloned()
+}
+
+/// Źródło „Przeglądarka” gra dźwięk przez OBS tylko z opcją „Kontroluj dźwięk przez OBS”.
+/// Bez niej głośność i wyciszenie w OBS nic nie zmieniają — mówimy streamerowi, co kliknąć.
+async fn browser_audio_check(obs: &crate::obs::ObsHandle, input: &str, list: &[Value]) -> Result<(), String> {
+    let is_browser = list.iter().any(|i| i["inputName"].as_str() == Some(input) && i["inputKind"].as_str() == Some("browser_source"));
+    if !is_browser {
+        return Ok(());
+    }
+    let settings = obs.request("GetInputSettings", json!({ "inputName": input })).await?;
+    if settings["inputSettings"]["reroute_audio"].as_bool() == Some(true) {
+        return Ok(());
+    }
+    Err(format!(
+        "Źródło „{input}” gra dźwięk poza OBS, więc OBS nie może go ściszyć. W OBS kliknij je dwa razy i zaznacz „Kontroluj dźwięk przez OBS”."
+    ))
 }
 
 /// Polecenia OBS (obs-websocket).
@@ -808,6 +832,7 @@ async fn run_obs(obs: &crate::obs::ObsHandle, name: &str, args: &Value) -> Resul
             // Mikrofon: pierwsze wejście audio (WASAPI / Pulse / CoreAudio input capture).
             let input = audio_input(&wanted, &list, &names)
             .ok_or_else(|| format!("Nie znalazłem źródła dźwięku „{wanted}”. Źródła: {}.", names.join(", ")))?;
+            browser_audio_check(obs, &input, &list).await?;
             let muted = match args["muted"].as_bool() {
                 Some(m) => {
                     obs.request("SetInputMute", json!({ "inputName": input, "inputMuted": m })).await?;
@@ -824,11 +849,14 @@ async fn run_obs(obs: &crate::obs::ObsHandle, name: &str, args: &Value) -> Resul
             let wanted = s("source");
             let input = audio_input(&wanted, &list, &names)
                 .ok_or_else(|| format!("Nie znalazłem źródła dźwięku „{wanted}”. Źródła: {}.", names.join(", ")))?;
+            browser_audio_check(obs, &input, &list).await?;
             let current = obs.request("GetInputVolume", json!({ "inputName": input })).await?["inputVolumeMul"].as_f64().unwrap_or(1.0);
+            // „ścisz”/„podgłośnij” = o ok. 10 dB — tyle ucho odbiera jako „o połowę ciszej/głośniej”
+            // (o 6 dB, jak wcześniej, było ledwo słychać).
             let target = match (args["percent"].as_f64(), args["change"].as_str()) {
                 (Some(p), _) => p / 100.0,
-                (None, Some("up")) => (current * 2.0).max(0.1),
-                _ => current * 0.5, // „ścisz” = o połowę (−6 dB)
+                (None, Some("up")) => (current * 3.0).max(0.1),
+                _ => current / 3.0,
             }
             .clamp(0.0, 1.0);
             obs.request("SetInputVolume", json!({ "inputName": input, "inputVolumeMul": target })).await?;
@@ -996,7 +1024,7 @@ pub fn declarations() -> Value {
           "parameters": { "type": "object", "properties": { "source": { "type": "string", "description": "Nazwa źródła dźwięku, np. Mikrofon, Dźwięk pulpitu, Muzyka" }, "muted": { "type": "boolean" } } } },
         { "name": "obs_set_volume", "description": "Zmienia głośność źródła dźwięku w OBS: percent (0–100) albo change (down = ciszej, up = głośniej).",
           "parameters": { "type": "object", "properties": {
-              "source": { "type": "string", "description": "Np. gra, muzyka, mikrofon, pulpit — albo nazwa źródła z OBS" },
+              "source": { "type": "string", "description": "Np. gra, muzyka, mikrofon, pulpit, przeglądarka — albo nazwa źródła z OBS" },
               "percent": { "type": "integer" },
               "change": { "type": "string", "enum": ["down", "up"] } }, "required": ["source"] } },
         { "name": "obs_set_source_visible", "description": "Pokazuje albo chowa źródło na aktualnej scenie OBS (np. kamerkę).",
@@ -1147,6 +1175,10 @@ mod tests {
         assert_eq!(audio_input("muzykę", &list, &names).as_deref(), Some("Spotify"));
         assert_eq!(audio_input("grę", &list, &names).as_deref(), Some("Game Capture"));
         assert_eq!(audio_input("pulpit", &list, &names).as_deref(), Some("Dźwięk pulpitu"));
+        let mut with_browser = list.clone();
+        with_browser.push(json!({ "inputName": "YT muzyka", "inputKind": "browser_source" }));
+        let names: Vec<String> = with_browser.iter().map(|i| i["inputName"].as_str().unwrap().to_owned()).collect();
+        assert_eq!(audio_input("przeglądarkę", &with_browser, &names).as_deref(), Some("YT muzyka"));
     }
 
     #[tokio::test]

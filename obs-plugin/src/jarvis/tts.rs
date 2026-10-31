@@ -30,6 +30,8 @@ pub const VOICES: &[(&str, &str)] = &[
 const STYLE: &str = "friendly, natural and lively conversational tone of a Polish stream assistant";
 /// Dłuższych tekstów nie wysyłamy do mowy (koszt i czas) — reszta i tak jest w panelu.
 const MAX_CHARS: usize = 600;
+/// Błąd „limit dzienny wyczerpany” (HTTP 429) — rozpoznawany przez `speak`.
+pub const LIMIT: &str = "Limit głosu Gemini wyczerpany.";
 /// Częstotliwość surowego PCM (gdy odpowiedź nie ma nagłówka WAV).
 const RAW_RATE: u32 = 24_000;
 
@@ -80,6 +82,9 @@ pub async fn synthesize(http: &reqwest::Client, key: &str, voice: &str, text: &s
     let status = resp.status();
     super::usage::record(super::usage::Kind::Voice, status.as_u16());
     let value: Value = resp.json().await.context("Niezrozumiała odpowiedź Gemini (głos)")?;
+    if status.as_u16() == 429 {
+        return Err(anyhow!(LIMIT));
+    }
     if !status.is_success() {
         return Err(anyhow!(describe_error(status.as_u16(), &value)));
     }

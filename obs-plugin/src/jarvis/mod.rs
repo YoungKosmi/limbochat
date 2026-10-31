@@ -58,9 +58,10 @@ const MEMORY: Duration = Duration::from_secs(90);
 const MAX_ROUNDS: usize = 5;
 const MAX_HISTORY: usize = 30;
 /// Najdłużej czekamy na głos Gemini, potem mówi głos systemowy.
-const TTS_TIMEOUT: Duration = Duration::from_secs(8);
-/// Po błędzie głosu Gemini (limit, brak sieci) przez ten czas mówi od razu głos systemowy.
-const TTS_PAUSE: Duration = Duration::from_secs(5 * 60);
+const TTS_TIMEOUT: Duration = Duration::from_secs(12);
+/// Po chwilowym błędzie głosu Gemini (brak sieci, przeciążenie) przez ten czas mówi głos systemowy.
+/// Po wyczerpaniu limitu — aż do odnowienia limitu (`until_google_day`), żeby głos nie skakał.
+const TTS_PAUSE: Duration = Duration::from_secs(15 * 60);
 
 pub const MODELS: &[(&str, &str)] = &[
     ("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite — najszybszy"),
@@ -1151,10 +1152,24 @@ async fn speak(shared: &Arc<Shared>, text: &str) -> Duration {
         Ok(Err(e)) => format!("{e:#}"),
         Err(_) => "brak odpowiedzi w czasie".to_owned(),
     };
-    tracing::warn!("głos Gemini niedostępny ({failure}) — przez kilka minut mówi głos systemowy");
-    *shared.tts_pause.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now() + TTS_PAUSE);
+    let limit = failure == tts::LIMIT;
+    let (pause, note) = if limit {
+        (until_google_day(chrono::Utc::now()), "LimboAI: limit naturalnego głosu Gemini na dziś się skończył — do ok. 9:00 mówię głosem systemowym.".to_owned())
+    } else {
+        (TTS_PAUSE, format!("LimboAI: naturalny głos chwilowo nie działa ({failure}) — przez 15 min mówię głosem systemowym."))
+    };
+    tracing::warn!("głos Gemini niedostępny ({failure}) — głos systemowy przez {} min", pause.as_secs() / 60);
+    *shared.tts_pause.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now() + pause);
+    shared.notice(None, note, false);
     shared.voice.say_if(ticket, text);
     estimate
+}
+
+/// Czas do odnowienia dziennych limitów Google (północ czasu pacyficznego = 8:00 UTC).
+fn until_google_day(now: chrono::DateTime<chrono::Utc>) -> Duration {
+    let reset = now.date_naive().and_hms_opt(8, 0, 0).expect("poprawna godzina").and_utc();
+    let next = if reset > now { reset } else { reset + chrono::TimeDelta::days(1) };
+    (next - now).to_std().unwrap_or(TTS_PAUSE).max(Duration::from_secs(60))
 }
 
 /// `speak` w tle (przypomnienia, wzmianki, „przeczytaj”) — pauza „Hej Limbo” na czas mówienia.
@@ -1388,6 +1403,13 @@ mod tests {
     fn old_settings_files_get_new_defaults() {
         let c: JarvisConfig = serde_json::from_str(r#"{ "enabled": true, "voice": false }"#).unwrap();
         assert!(!c.voice && !c.wake_word && c.wake_sensitivity == 2 && !c.read_mentions);
+    }
+
+    #[test]
+    fn voice_limit_pause_lasts_until_google_reset() {
+        let at = |s: &str| chrono::DateTime::parse_from_rfc3339(s).unwrap().with_timezone(&chrono::Utc);
+        assert_eq!(until_google_day(at("2026-10-31T07:00:00Z")), Duration::from_secs(3600));
+        assert_eq!(until_google_day(at("2026-10-31T09:00:00Z")), Duration::from_secs(23 * 3600));
     }
 
     #[test]
