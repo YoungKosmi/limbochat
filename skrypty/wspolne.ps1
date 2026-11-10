@@ -221,7 +221,7 @@ function Publish-Source($repo, $message) {
         $bytes = [IO.File]::ReadAllBytes($f.Full)
         # Tak samo jak Git + .gitattributes: tekst w repozytorium ma LF.
         # UTF-8 BOM skryptów PowerShell pozostaje zachowany dla Windows PowerShell 5.1.
-        if ($f.Path -match '\.(rs|toml|lock|md|js|mjs|css|html|yml|yaml|ps1|bat|txt)$|(^|/)(\.gitignore|\.gitattributes|\.editorconfig)$') {
+        if ($f.Path -match '\.(rs|toml|lock|md|js|mjs|json|css|html|yml|yaml|ps1|bat|txt)$|(^|/)(\.gitignore|\.gitattributes|\.editorconfig)$') {
             $bytes = [Text.Encoding]::UTF8.GetBytes([Text.Encoding]::UTF8.GetString($bytes).Replace("`r`n", "`n"))
         }
         $content = [Convert]::ToBase64String($bytes)
@@ -258,7 +258,10 @@ function Publish-Source($repo, $message) {
 
 # Paczka „na komputer” (bez OBS): silnik + LiMBOCHAT.bat, który otwiera panel jako okno.
 function New-BrowserPackage($zipPath, [switch]$WithKeys) {
-    $dir = Join-Path ([IO.Path]::GetTempPath()) "LiMBOCHAT-przegladarka-$PID"
+    $packageTemp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
+    $dir = [IO.Path]::GetFullPath((Join-Path $packageTemp "LiMBOCHAT-przegladarka-$PID"))
+    if ([IO.Path]::GetDirectoryName($dir) -ne $packageTemp -or [IO.Path]::GetFileName($dir) -ne "LiMBOCHAT-przegladarka-$PID") { Fail 'Niepoprawny folder tymczasowy paczki.' }
+    if ((Test-Path -LiteralPath $dir) -and ((Get-Item -LiteralPath $dir).Attributes -band [IO.FileAttributes]::ReparsePoint)) { Fail 'Folder paczki nie może być dowiązaniem.' }
     if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
     New-Item -ItemType Directory -Path $dir | Out-Null
     Copy-Item (Join-Path $Root 'target\release\limbochat-engine.exe') $dir
