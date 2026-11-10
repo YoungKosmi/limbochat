@@ -356,6 +356,13 @@ impl Client {
         if config.client_id.is_empty() || vault_read("kick-client-secret").await.is_none() {
             return Err("Uzupełnij Client ID i Client Secret Kicka w ustawieniach.".into());
         }
+        // Validate the app before opening the browser. This distinguishes invalid
+        // credentials from a redirect URI mismatch in the developer dashboard.
+        self.cancel_login().await;
+        if let Err(error) = self.access(true, None).await {
+            self.error(&error).await;
+            return Err(error);
+        }
         let state = random();
         let verifier = random();
         let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));

@@ -1549,7 +1549,12 @@ $("kick-clear-secret").onclick = () => {
   if (confirm("Rozłączyć konto Kick i usunąć jego sekret z sejfu?")) send({ c: "kick_settings", client_id: $("kick-client-id").value.trim(), webhooks: false, clear_secret: true });
 };
 $("kick-reconnect").onclick = () => send({ c: "kick_reconnect" });
-$("kick-open-login").onclick = () => { if (state.kick.auth_url) send({ c: "open", url: state.kick.auth_url }); };
+for (const [button, field] of [["kick-copy-callback", "kick-callback-url"], ["kick-copy-webhook", "kick-webhook-url"]]) {
+  $(button).onclick = () => { copy($(field).value); };
+  $(field).onclick = () => $(field).select();
+}
+$("kick-developer-open").onclick = () => send({ c: "open", url: "https://kick.com/settings/developer" });
+$("kick-open-login").onclick = () => send({ c: "platform_login", platform: "kick" });
 
 function openAccountMenu(event) {
   event.stopPropagation();

@@ -128,13 +128,15 @@
             ><input type="checkbox" id="kick-webhooks" /><span></span>Odbieraj
             czat i alerty przez webhook Kicka</label
           >
-          <p class="hint">
-            W panelu developerskim Kicka ustaw Redirect URI:
-            <code>http://localhost:47250/kick/callback</code>. Włącz webhooki i
-            podaj publiczny adres HTTPS kierujący wyłącznie do lokalnego
-            odbiornika <code>http://127.0.0.1:47251/kick/events</code>.
-            <strong>Nie wystawiaj portu panelu 47250.</strong>
-          </p>
+          <label class="field"><span class="label">Redirect URI · wpisz identyczny w aplikacji Kick</span>
+            <div class="row-inline"><input id="kick-callback-url" readonly value="http://localhost:47250/kick/callback" aria-label="Redirect URI Kicka"><button class="btn-ghost" type="button" id="kick-copy-callback">Kopiuj</button></div>
+          </label>
+          <label class="field"><span class="label">Lokalny odbiornik webhooka · cel tunelu HTTPS</span>
+            <div class="row-inline"><input id="kick-webhook-url" readonly value="http://127.0.0.1:47251/kick/events" aria-label="Lokalny adres webhooka Kicka"><button class="btn-ghost" type="button" id="kick-copy-webhook">Kopiuj</button></div>
+          </label>
+          <p class="hint">Błąd „invalid authorization request” może oznaczać niezgodny Client ID lub Redirect URI. W Kicku zapisz dokładnie adres z pola powyżej — <code>localhost</code> i <code>127.0.0.1</code> to różne adresy. Po zapisaniu kliknij ponownie „Połącz”, aby wygenerować nowe logowanie.</p>
+          <p class="hint">Webhook w panelu Kicka musi mieć publiczny adres HTTPS, przekierowany do powyższego lokalnego odbiornika. <strong>Nie wystawiaj portu panelu 47250.</strong></p>
+          <button class="btn-ghost" type="button" id="kick-developer-open">Otwórz ustawienia aplikacji Kick</button>
           <div class="row-inline">
             <button class="btn-accent" id="kick-save">
               Zapisz konfigurację</button
@@ -145,7 +147,7 @@
             </button>
           </div>
           <button class="btn-ghost" id="kick-open-login" hidden>
-            Otwórz logowanie Kick
+            Ponów logowanie Kick
           </button>
           <p class="hint" id="kick-webhook-status"></p>
           <p class="hint">

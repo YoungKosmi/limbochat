@@ -6,6 +6,9 @@ pokazuje się w panelu w okienku „Co nowego”.
 
 ## Następna wersja
 
+- **Kopiowanie adresów Kicka** — osobne pola i przyciski „Kopiuj” dla Redirect URI i lokalnego webhooka; dodano skrót do ustawień developerskich Kicka.
+- Logowanie Kicka sprawdza dane aplikacji przed otwarciem przeglądarki. Ponowienie tworzy nową sesję OAuth; panel wyjaśnia wymóg identycznego Redirect URI.
+
 ## 0.8.0 — 2026-11-10
 
 - **Kick obok Twitcha** — wybór platformy przy dodawaniu kanału, osobne karty i równoczesne połączenia obu kont w ustawieniach.

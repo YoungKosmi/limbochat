@@ -11,6 +11,10 @@ Przy przycisku **+** wybierz Twitch albo Kick i wpisz nazwę kanału. Te same na
 3. Kliknij **Połącz** przy Kicku i zatwierdź zgodę w przeglądarce. Po przekierowaniu wróć do LiMBOCHAT. Logowanie Twitcha pozostaje niezależne.
 4. Do odbioru czatu skonfiguruj publiczny adres HTTPS webhooka według sekcji poniżej. Zaznacz odbieranie webhooków, zapisz, otwórz kartę Kicka i kliknij **Połącz ponownie kanały Kick**.
 
+### Błąd „invalid authorization request”
+
+Sprawdź pole **Redirect URI** w aplikacji developerskiej Kicka. Musi mieć wartość `http://localhost:47250/kick/callback`. Nie wpisuj tam adresu `http://127.0.0.1:47251/kick/events`: to odbiornik zdarzeń, a nie przekierowanie logowania. W panelu LiMBOCHAT oba adresy mają osobne pola i przyciski **Kopiuj**. Po zapisaniu ustawień w Kicku ponów połączenie z LiMBOCHAT, aby utworzyć nową sesję OAuth. Program sprawdza poprawność danych aplikacji przed otwarciem logowania, ale nie ma dostępu do listy Redirect URI zapisanej w panelu developerskim.
+
 ## Webhook czatu i alertów
 
 Oficjalne API Kicka dostarcza zdarzenia przez webhooki. Samo logowanie nie uruchamia odbioru czatu. Potrzebny jest tunel HTTPS lub własny reverse proxy, kierujący **wyłącznie** do `http://127.0.0.1:47251`. Nie kieruj go na panel sterowania `47250`.
