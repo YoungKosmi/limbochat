@@ -502,6 +502,7 @@ fn emote_tooltip(ui: &mut Ui, emote: &Emote, line_height: f32) {
         ui.label(RichText::new(emote.name.as_ref()).font(theme::semi(14.0)));
         let provider = match emote.provider {
             crate::emotes::EmoteProvider::Twitch => "Twitch",
+            crate::emotes::EmoteProvider::Kick => "Kick",
             crate::emotes::EmoteProvider::SevenTv => "7TV",
         };
         let kind = if emote.zero_width { " · zero-width" } else { "" };

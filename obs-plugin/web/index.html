@@ -30,6 +30,10 @@
       <nav class="tabs-wrap">
         <div class="tabs" id="tabs"><span class="tab-indicator" id="tab-indicator"></span></div>
         <form class="add-tab" id="add-form" autocomplete="off">
+          <select id="add-platform" aria-label="Platforma kanału">
+              <option value="twitch">Twitch</option>
+              <option value="kick">Kick</option>
+            </select>
           <input id="add-input" placeholder="nazwa kanału ↵" maxlength="25" spellcheck="false">
         </form>
         <button class="add-btn" id="add-btn" title="Dołącz do kanału"><span></span></button>
@@ -41,7 +45,7 @@
       <div id="chats"></div>
       <section class="lobby" id="lobby">
         <div class="lobby-logo"><img src="/logo.png" alt="LiMBO"></div>
-        <p class="flow tagline">czat Twitcha · moderacja · 7TV</p>
+        <p class="flow tagline">Twitch + Kick · moderacja · 7TV</p>
         <p class="muted">Otwórz kilka kanałów naraz — każdy w osobnej zakładce.</p>
         <div class="lobby-actions">
           <button class="btn-accent" id="lobby-join">+ Dołącz do kanału</button>
@@ -88,7 +92,71 @@
     <div class="glass settings-card" id="settings-card">
       <div class="settings-top"><h2>Ustawienia</h2><button class="jv-close" id="settings-close" title="Zamknij">×</button></div>
 
-      <div class="tag">Wygląd</div>
+      <div class="tag section">Połączone konta</div>
+        <div class="platform-account">
+          <strong class="platform-twitch">Twitch</strong
+          ><span id="twitch-connection" class="muted"></span
+          ><button class="btn-ghost" id="twitch-connect">Połącz</button
+          ><button class="btn-ghost" id="twitch-disconnect">Rozłącz</button>
+        </div>
+        <div class="platform-account">
+          <strong class="platform-kick">Kick</strong
+          ><span id="kick-connection" class="muted"></span
+          ><button class="btn-ghost" id="kick-connect">Połącz</button
+          ><button class="btn-ghost" id="kick-disconnect">Rozłącz</button>
+        </div>
+        <p class="hint">
+          Możesz połączyć oba konta jednocześnie. Wiadomości i polecenia
+          trafiają na platformę aktywnej karty.
+        </p>
+        <details class="kick-setup">
+          <summary>Konfiguracja aplikacji Kick</summary>
+          <label class="field"
+            ><span class="label">Client ID</span
+            ><input id="kick-client-id" autocomplete="off" maxlength="200"
+          /></label>
+          <label class="field"
+            ><span class="label">Client Secret · sejf systemowy</span
+            ><input
+              id="kick-client-secret"
+              type="password"
+              autocomplete="new-password"
+              maxlength="4096"
+              placeholder="Wpisz, aby zapisać lub zastąpić sekret"
+          /></label>
+          <label class="switch"
+            ><input type="checkbox" id="kick-webhooks" /><span></span>Odbieraj
+            czat i alerty przez webhook Kicka</label
+          >
+          <p class="hint">
+            W panelu developerskim Kicka ustaw Redirect URI:
+            <code>http://localhost:47250/kick/callback</code>. Włącz webhooki i
+            podaj publiczny adres HTTPS kierujący wyłącznie do lokalnego
+            odbiornika <code>http://127.0.0.1:47251/kick/events</code>.
+            <strong>Nie wystawiaj portu panelu 47250.</strong>
+          </p>
+          <div class="row-inline">
+            <button class="btn-accent" id="kick-save">
+              Zapisz konfigurację</button
+            ><button class="btn-ghost" id="kick-reconnect">
+              Połącz ponownie kanały Kick</button
+            ><button class="btn-ghost" id="kick-clear-secret">
+              Usuń sekret
+            </button>
+          </div>
+          <button class="btn-ghost" id="kick-open-login" hidden>
+            Otwórz logowanie Kick
+          </button>
+          <p class="hint" id="kick-webhook-status"></p>
+          <p class="hint">
+            Quiz, boss, momenty, powtórki, analiza kadru i profile działają na
+            obu platformach. Publiczne API Kicka nie udostępnia obecnie ankiet,
+            predykcji, raidów ani wszystkich trybów czatu. Te funkcje obsłużysz
+            w panelu Kicka.
+          </p>
+        </details>
+
+        <div class="tag">Wygląd</div>
       <div class="field">
         <span class="label">Kolor motywu</span>
         <div class="swatches" id="swatches"></div>

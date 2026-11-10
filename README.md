@@ -4,7 +4,7 @@
 
 # LiMBOCHAT
 
-**Czat Twitcha prosto w OBS — z emotkami 7TV, moderacją jednym kliknięciem, asystentem głosowym LimboAI, animowanymi alertami i overlayem na stream.**
+**Czat Twitcha i Kicka w OBS — z emotkami 7TV, moderacją, asystentem głosowym LimboAI, animowanymi alertami i overlayem na stream.**
 
 [![Najnowsza wersja](https://img.shields.io/github/v/release/YoungKosmi/limbochat?label=wersja&color=8b6cf0&style=for-the-badge)](https://github.com/YoungKosmi/limbochat/releases/latest)
 [![Pobrania](https://img.shields.io/github/downloads/YoungKosmi/limbochat/total?label=pobrania&color=a35cff&style=for-the-badge)](https://github.com/YoungKosmi/limbochat/releases)
@@ -28,6 +28,8 @@
 <a id="funkcje"></a>
 
 ## ✨ Funkcje
+
+**[Obsługa Kicka](docs/KICK.md)** — wybór Twitch/Kick przy dodawaniu karty i osobne połączenia kont w ustawieniach. Kick wymaga konfiguracji aplikacji OAuth i publicznego webhooka; dokumentacja opisuje dostępne funkcje i ograniczenia API.
 
 **Nowe: [LiMBO Studio](docs/STUDIO.md)** — karta moderacji, ankiety i predykcje, momenty i powtórki OBS, profile streama, analiza kadru z gry, teleturniej i boss dla czatu. Otwórz przyciskiem **✦** w panelu.
 

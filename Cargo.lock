@@ -475,6 +475,7 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "serde_core",
+ "serde_json",
  "serde_path_to_error",
  "serde_urlencoded",
  "sha1",
@@ -1061,6 +1062,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
  "block-buffer",
+ "const-oid",
  "crypto-common",
 ]
 
@@ -2460,11 +2462,13 @@ dependencies = [
  "open",
  "rand_core 0.6.4",
  "reqwest",
+ "ring",
  "rustfft",
  "serde",
  "serde_json",
  "sha2",
  "smallvec",
+ "spki",
  "thiserror 2.0.21",
  "tokio",
  "tokio-tungstenite",

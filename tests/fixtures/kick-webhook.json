@@ -1,0 +1,6 @@
+{
+  "public_key": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAskusAL/RE1fLUR/gS7/5\nbqSWV2eSMkIxmtZduXrKBoT2yW8KWQGYAD8juGmaBtzhruE2j9TOoBxm97+dC+Kv\nADtRTjTJPjzQ1vnil3DustFBeiBzG3pWznZ15yqwiCiRBNuVF15fB3loyK0WvGUi\nJJlRGhyndV8/KL2BnPv1nrO7ulL2Tsunfvn6oEr2vEa9VyHq+xe9ykBBBU/XqSOe\nhlpm6VVvWHzVtsDD3gekbBdS03X5vpa8yoGpEuIuVATBSxRlP0nntbCzFcOGNVQN\nqvuH5cUD+LBofLNQQ6E3ahOajRr2OcT1WnoF/21pIxG7+RZd1CppDz176AXPkGp4\nXQIDAQAB\n-----END PUBLIC KEY-----\n",
+  "timestamp": "2026-11-10T12:00:00Z",
+  "body": "{\"message_id\":\"m1\",\"broadcaster\":{\"user_id\":123},\"sender\":{\"user_id\":456,\"username\":\"Viewer\",\"channel_slug\":\"viewer\"},\"content\":\"!odp A\",\"created_at\":\"2026-11-10T12:00:00Z\"}",
+  "signature": "crSA1jbiZhI4aMl5EAncHDOD2nCP0GguEbt8haRARCrysfGDwl/7CbvmwHWHWAQWsAvzlkZ+299nJlSddjwRwBTv6XAghcwdsTn/duo0hOsTOrWTnvp/fbh6hR/j2hlErVtCfVKiwFTUQ245aJmt8pp34dE5uBgDv7EUwbe9ebQYlEyGtgR7CCeRfW8mkAMYm6WYcdY8oduNn5y01ejRBxpaqB1c3+b8WJ9/ZFEjTLMXsau2jwZQO6uSgE1ompobAWe4yDyUfvm/a2+BERV0Qug5iE6FWqbH5KmT+VvUhI2Wci0b9wfBI9Av3uirC96nGGevYt/UbTGegDu2MUFo3A=="
+}

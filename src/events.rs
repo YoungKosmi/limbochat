@@ -16,6 +16,8 @@ use crate::{helix::BadgeMap, parser::ParsedMessage};
 pub enum UiEvent {
     /// Dołączono do kanału i otrzymano ROOMSTATE (znamy już `channel_id`).
     Connected { channel: String, channel_id: String },
+    #[allow(dead_code)] // Emitted by the Kick engine adapter.
+    Disconnected { channel:String },
     /// Nowa, już sparsowana wiadomość (kanał jest w `ParsedMessage::channel_login`).
     Message(Box<ParsedMessage>),
     /// CLEARMSG — pojedyncza wiadomość usunięta (przez nas lub innego moda).
@@ -27,6 +29,8 @@ pub enum UiEvent {
     /// `channel == None` — zmieniły się emotki globalne (dotyczy wszystkich zakładek).
     EmotesLoaded { channel: Option<String>, count: usize },
     Auth(AuthState),
+    #[allow(dead_code)] // Emitted by the Kick engine adapter.
+    PlatformStatus { platform: String, data: serde_json::Value },
     /// Adres awatara zalogowanego użytkownika.
     Avatar { url: String },
     /// Czy zalogowany użytkownik może moderować dany kanał.
@@ -60,6 +64,7 @@ pub struct ChatAlert {
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 pub enum AlertKind {
+    Kicks { amount: u64 },
     Bits { amount: u64 },
     /// `tier`: "Prime", "1", "2" albo "3".
     Sub { tier: String, months: u64, resub: bool },

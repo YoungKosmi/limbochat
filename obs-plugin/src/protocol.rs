@@ -31,7 +31,9 @@ pub enum ServerMsg {
     UserCleared { channel: String, user_id: String, login: String, timeout: Option<u64> },
     ChatCleared { channel: String },
     Connected { channel: String },
+    Disconnected { channel:String },
     Auth(AuthDto),
+    PlatformStatus { platform: String, data: serde_json::Value },
     Avatar { url: String },
     ModStatus { channel: String, can_moderate: bool },
     Badges { channel: Option<String>, map: HashMap<String, BadgeDto> },
@@ -55,6 +57,7 @@ pub enum ServerMsg {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Snapshot {
+    pub kick: serde_json::Value,
     pub auth: AuthDto,
     pub avatar: Option<String>,
     pub settings: Config,
@@ -126,6 +129,7 @@ impl From<&Emote> for EmoteDto {
             zw: e.zero_width,
             src: match e.provider {
                 EmoteProvider::Twitch => "twitch",
+                EmoteProvider::Kick => "kick",
                 EmoteProvider::SevenTv => "7tv",
             }
             .to_owned(),
@@ -224,10 +228,14 @@ impl From<&ParsedMessage> for MessageDto {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(tag = "c", rename_all = "snake_case")]
 pub enum ClientMsg {
-    Join { channel: String },
+    Join { channel: String, #[serde(default)] platform: Option<String> },
+    PlatformLogin { platform: String },
+    PlatformLogout { platform: String },
+    KickSettings { client_id: String, webhooks: bool, #[serde(default)] client_secret: Option<String>, #[serde(default)] clear_secret: bool },
+    KickReconnect,
     Part { channel: String },
     Activate { channel: String },
     Login,

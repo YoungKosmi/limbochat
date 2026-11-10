@@ -200,7 +200,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .add-btn span::before, .add-btn span::after { content: ""; position: absolute; left: 50%; top: 50%; width: 12px; height: 1.8px; margin: -0.9px 0 0 -6px; background: var(--text); border-radius: 2px; }
 .add-btn span::after { transform: rotate(90deg); }
 .add-tab { display: none; }
-.add-tab.open { display: block; animation: grow .25s var(--ease); }
+.add-tab.open { display: flex; align-items: center; gap: 5px; animation: grow .25s var(--ease); }
 @keyframes grow { from { opacity: 0; transform: scaleX(.6); transform-origin: left; } }
 .add-tab input, .picker input {
   width: 140px; height: 30px; padding: 0 12px; border-radius: 999px; outline: none;
@@ -779,3 +779,51 @@ body.no-anim .msg.alert, body.no-anim .msg.alert * { animation: none !important;
 .cl-list li { font-size: 13.5px; line-height: 1.45; padding: 8px 10px; border-radius: 10px; background: rgb(var(--a) / .08); animation: tile-in .4s both; }
 .cl-list li:nth-child(2) { animation-delay: .06s; } .cl-list li:nth-child(3) { animation-delay: .12s; } .cl-list li:nth-child(n+4) { animation-delay: .18s; }
 .cl-list b { color: #fff; }
+
+.add-tab select {
+  width: 80px;
+  height: 30px;
+  border-radius: 12px;
+  padding: 0 6px;
+  background: var(--bg);
+  color: inherit;
+  border: 1px solid rgb(var(--a-soft) / 0.4);
+}
+.platform-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+}
+.platform-account .muted {
+  flex: 1;
+}
+.platform-kick {
+  color: #53fc18;
+}
+.platform-twitch {
+  color: #bf94ff;
+}
+.kick-setup {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #ffffff20;
+  border-radius: 14px;
+}
+.kick-setup summary {
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+.kick-setup input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
+}
+.kick-setup code {
+  overflow-wrap: anywhere;
+}
+.tab .platform-label {
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  margin-right: 3px;
+}

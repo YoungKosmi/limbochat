@@ -2,6 +2,7 @@
 const $ = (id) => document.getElementById(id);
 let ws,
   auth = {},
+  kickAuth = {},
   channels = [],
   settings = {},
   studio = {},
@@ -47,7 +48,30 @@ function send(data) {
   return true;
 }
 function command(action, data = {}) {
+  if (
+    kickActive() &&
+    (/^(ballots_refresh|poll_|prediction_)/.test(action) ||
+      (action === "ballot_show" && data.kind !== "off"))
+  ) {
+    notify(
+      "Ta funkcja jest dostępna w panelu Kicka; publiczne API jej nie udostępnia.",
+      true,
+    );
+    return false;
+  }
   return send({ c: "studio", command: { action, ...data } });
+}
+function kickActive() {
+  return (settings.active || "").startsWith("kick:");
+}
+function renderPlatform() {
+  $("account").textContent = kickActive()
+    ? kickAuth.state === "logged_in"
+      ? `Kick: ${kickAuth.login}`
+      : "Kick: konto niepołączone"
+    : auth.state === "logged_in"
+      ? `Twitch: ${auth.login}`
+      : "Twitch: konto niepołączone";
 }
 function number(id, min, max) {
   const value = Number($(id).value);
@@ -85,7 +109,7 @@ function switchTab(next) {
   for (const node of document.querySelectorAll("[data-tab]"))
     node.classList.toggle("active", node.dataset.tab === tab);
   $("page-title").textContent = titles[tab];
-  if (tab === "polls" && !studio.busy?.includes("ballots"))
+  if (tab === "polls" && !kickActive() && !studio.busy?.includes("ballots"))
     command("ballots_refresh");
 }
 for (const node of document.querySelectorAll("[data-tab]"))
@@ -141,6 +165,7 @@ function receive(message) {
       engineVersion = message.version;
       $("demo-mode").hidden = !message.demo;
       auth = message.auth;
+      kickAuth = message.kick || {};
       channels = message.channels;
       settings = message.settings;
       obs = message.obs;
@@ -149,6 +174,7 @@ function receive(message) {
         auth.state === "logged_in"
           ? `Twitch: ${auth.login}`
           : "Twitch: niezalogowany";
+      renderPlatform();
       updateChannels();
       renderObs();
       applyStudio(message.studio || {});
@@ -163,6 +189,12 @@ function receive(message) {
       break;
     case "settings":
       settings = message;
+      renderPlatform();
+      renderBallots();
+      break;
+    case "platform_status":
+      if (message.platform === "kick") kickAuth = message.data;
+      renderPlatform();
       break;
     case "auth":
       auth = message;
@@ -170,6 +202,7 @@ function receive(message) {
         auth.state === "logged_in"
           ? `Twitch: ${auth.login}`
           : "Twitch: niezalogowany";
+      renderPlatform();
       break;
     case "obs":
       obs = message;
@@ -291,8 +324,8 @@ function updateBusy() {
   $("vision-capture").disabled = busy.includes("capture");
   $("vision-analyze").disabled = !hasFrame || busy.includes("vision");
   $("vision-sources").disabled = busy.includes("sources");
-  $("ballots-refresh").disabled = busy.includes("ballots");
-  $("ballot-create").disabled = busy.includes("ballots");
+  $("ballots-refresh").disabled = kickActive() || busy.includes("ballots");
+  $("ballot-create").disabled = kickActive() || busy.includes("ballots");
 }
 function elapsed(seconds) {
   if (seconds == null) return "poza aktywnym streamem";
@@ -422,9 +455,29 @@ bind("profile-save", () => {
   command("profile_save", { name });
 });
 function ownBallots() {
+  if (kickActive()) return null;
   return studio.ballots?.[auth.login];
 }
 function renderBallots() {
+  if (kickActive()) {
+    $("ballots-status").textContent =
+      "Kick: publiczne API nie udostępnia ankiet ani predykcji. Otwórz panel Kicka. Konto Twitch nie jest używane.";
+    for (const node of document.querySelectorAll(
+      '[data-panel="polls"] button, [data-panel="polls"] input, [data-panel="polls"] select, [data-panel="polls"] textarea',
+    ))
+      node.disabled = true;
+    $("ballot-hide").disabled = false;
+    empty($("polls-list"), "Ankiety Kicka obsłużysz w panelu platformy.");
+    empty(
+      $("predictions-list"),
+      "Predykcje Kicka obsłużysz w panelu platformy.",
+    );
+    return;
+  }
+  for (const node of document.querySelectorAll(
+    '[data-panel="polls"] button, [data-panel="polls"] input, [data-panel="polls"] select, [data-panel="polls"] textarea',
+  ))
+    node.disabled = false;
   const history = ownBallots();
   $("ballots-status").textContent = history
     ? `Wyniki #${history.channel} · odświeżono ${date(history.updated)}. Historia jest zapisana lokalnie.`
@@ -486,6 +539,8 @@ function renderBallots() {
 bind("ballots-refresh", () => command("ballots_refresh"));
 bind("ballot-hide", () => command("ballot_show", { kind: "off", index: 0 }));
 bind("ballot-create", () => {
+  if (kickActive())
+    return notify("Otwórz panel Kicka, aby utworzyć głosowanie.", true);
   const kind = $("ballot-kind").value,
     title = $("ballot-title").value.trim(),
     choices = $("ballot-choices")
@@ -531,6 +586,7 @@ for (const mode of ["lock", "cancel", "resolve"])
 setInterval(() => {
   if (
     tab === "polls" &&
+    !kickActive() &&
     $("ballots-auto").checked &&
     ws?.readyState === WebSocket.OPEN &&
     !studio.busy?.includes("ballots")
@@ -789,7 +845,10 @@ function renderViewer(data) {
       .find((m) => m.login.toLowerCase() === data.login.toLowerCase());
   if (channel?.can_moderate && message?.user_id) {
     for (const [label, seconds] of [
-      ["30 s", 30],
+      [
+        data.channel.startsWith("kick:") ? "1 min" : "30 s",
+        data.channel.startsWith("kick:") ? 60 : 30,
+      ],
       ["10 min", 600],
       ["24 h", 86400],
     ])

@@ -22,6 +22,12 @@ try {
     $paths = @(Get-SourceFiles | ForEach-Object { $_.Path })
     Assert ($paths.Count -eq 3) "Do źródeł trafiły prywatne lub wynikowe pliki: $($paths -join ', ')"
     Assert ($paths -contains '.github/workflows/ci.yml') 'Brakuje konfiguracji GitHuba w źródłach.'
+    Put 'outputs/worktree/.git' 'gitdir: private/local/path'
+    Put 'outputs/worktree/main.rs' 'fn main() {}'
+    $Root = Join-Path $fixture 'outputs/worktree'
+    $worktreePaths = @(Get-SourceFiles | ForEach-Object { $_.Path })
+    Assert ($worktreePaths.Count -eq 1 -and $worktreePaths[0] -eq 'main.rs') 'Plik .git worktree nie może trafić do publikacji.'
+    $Root = $fixture
     Assert ((Get-EngineVersion) -eq '0.6.6') 'Nie odczytano wersji.'
     Set-EngineVersion '0.6.7'
     Assert ((Get-EngineVersion) -eq '0.6.7') 'Nie zapisano wersji.'

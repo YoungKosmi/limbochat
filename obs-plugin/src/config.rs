@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    pub kick: crate::kick::Config,
     pub channels: Vec<String>,
     pub active: Option<String>,
     pub animations: bool,
@@ -155,6 +156,7 @@ impl OverlayConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            kick: crate::kick::Config::default(),
             channels: Vec::new(),
             active: None,
             animations: true,

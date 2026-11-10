@@ -336,6 +336,7 @@ impl ChatApp {
 
     fn handle_event(&mut self, event: UiEvent) {
         match event {
+            UiEvent::PlatformStatus {..} => {},
             UiEvent::Message(msg) => {
                 let my_login = self.my_login();
                 let active_login = self.tabs.get(self.active).map(|t| t.login.clone());
@@ -379,6 +380,7 @@ impl ChatApp {
                     tab.chat.push_system(format!("Połączono z #{channel}"), SystemLevel::Info);
                 }
             }
+            UiEvent::Disconnected { channel } => {if let Some(tab)=self.tab_mut(&channel){tab.channel_id=None;}}
             UiEvent::EmotesLoaded { channel, count } => {
                 let store = &self.emotes;
                 let scale = self.emote_scale;
@@ -1000,6 +1002,7 @@ fn alert_line(a: &crate::events::ChatAlert) -> String {
     use crate::events::AlertKind as K;
     let n = &a.user_name;
     match &a.kind {
+        K::Kicks { amount } => format!("{n}: {amount} KICKs"),
         K::Bits { amount } => format!("{n}: {amount} bitsów"),
         K::Sub { months, resub: true, .. } => format!("{n} subskrybuje od {months} mies."),
         K::Sub { .. } => format!("{n} subskrybuje!"),

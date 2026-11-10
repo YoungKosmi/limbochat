@@ -16,6 +16,8 @@ use async_trait::async_trait;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmoteProvider {
     Twitch,
+    #[allow(dead_code)] // Engine/browser client supports Kick; legacy egui client is Twitch-only.
+    Kick,
     SevenTv,
 }
 

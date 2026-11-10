@@ -159,9 +159,12 @@ impl EmoteSource for SevenTvClient {
     }
 
     async fn channel_emotes(&self, twitch_channel_id: &str) -> anyhow::Result<Vec<Emote>> {
+        let (platform, twitch_channel_id) = match twitch_channel_id.strip_prefix("kick:") {
+            Some(id) => ("kick", id), None => ("twitch", twitch_channel_id),
+        };
         let resp = self
             .http
-            .get(format!("{API_BASE}/users/twitch/{twitch_channel_id}"))
+            .get(format!("{API_BASE}/users/{platform}/{twitch_channel_id}"))
             .send()
             .await
             .context("7TV: błąd połączenia (kanał)")?;

@@ -1187,6 +1187,7 @@ async fn stream_summary(shared: &Arc<Shared>, ctx: &tools::Context) -> Option<(S
         return Some(("Wieczorne granie z czatem".into(), "Just Chatting".into()));
     }
     let (_, own_id) = ctx.me.as_ref()?;
+    if ctx.active.as_ref().is_some_and(|c|crate::platform::is_kick(&c.login)){return None;}
     let info = shared.helix.as_ref()?.channel_info(own_id).await.ok()??;
     Some((info.title, info.game_name))
 }
@@ -1313,11 +1314,12 @@ fn system_prompt(ctx: &tools::Context, stream: &Option<(String, String)>, pendin
     };
 
     format!(
-        "Jesteś LimboAI — głosowy asystent streamera Twitch, wbudowany w OBS (LiMBOCHAT). \
+        "Jesteś LimboAI — głosowy asystent streamera Twitch i Kick, wbudowany w OBS (LiMBOCHAT). \
 Mówisz po polsku, krótko (1–2 zdania, do ~25 słów), naturalnie, z lekką nutą kamerdynera z Iron Mana — bez przesady. \
 Twoje odpowiedzi czyta syntezator mowy: żadnych emoji, markdownu, list ani adresów URL.
 
 Zasady:
+- Platformę rozpoznawaj po aktywnym kanale: prefiks kick: oznacza Kick, pozostałe kanały to Twitch. Na Kicku timeout jest zaokrąglany w górę do minuty. Ankiety, predykcje, raidy, klipy, role, tryby czatu i reklamy mogą nie być dostępne w API Kicka. Nie przenoś takich poleceń na Twitcha; wyjaśnij błąd narzędzia.
 - Polecenia wykonuj narzędziami. Nie mów, że coś zrobiłeś, jeśli narzędzie zwróciło błąd — powiedz krótko, co poszło nie tak.
 - Kategorie podawaj jako pełną oficjalną nazwę z Twitcha, np. „GTA 4” → „Grand Theft Auto IV”, „GTA 5”/„piątka” → „Grand Theft Auto V”, „lol” → „League of Legends”, „cs” → „Counter-Strike”, „pogaduchy”/„just chatting” → „Just Chatting”.
 - Rozpoznawanie mowy przekręca nicki: użytkownika wybieraj z listy osób z czatu poniżej (najbliższy pasujący). Gdy nie masz pewności, dopytaj.

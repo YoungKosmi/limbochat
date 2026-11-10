@@ -76,6 +76,7 @@ pub fn main() -> i32 {
         "--install" => return cli_install(),
         "--stop" => return cli_stop(),
         "--export-keys" => return crate::share::cli_export(Path::new(arg(1))),
+        "--configure-kick" => return crate::kick::cli_configure(),
         "--pubkey" => return update::cli_pubkey(Path::new(arg(1))),
         "--verify" => return update::cli_verify(Path::new(arg(1)), arg(2), arg(3), Path::new(arg(4))),
         "--sign" => {

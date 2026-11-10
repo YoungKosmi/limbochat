@@ -68,6 +68,7 @@ pub async fn serve(listener: tokio::net::TcpListener, hub: HubHandle, mut shutdo
         .route("/fonts/{name}", get(font))
         .route("/demo/{name}", get(demo_emote))
         .route("/ws", get(websocket))
+        .route("/kick/callback",get(kick_callback))
         .route("/overlay", get(|| async { asset("text/html; charset=utf-8", OVERLAY.as_bytes(), false) }))
         .route("/studio",get(||async{asset("text/html; charset=utf-8",STUDIO.as_bytes(),false)}))
         .route("/studio.js",get(||async{asset("text/javascript; charset=utf-8",STUDIO_JS.as_bytes(),false)}))
@@ -117,6 +118,14 @@ fn is_local_request(port: u16, headers: &HeaderMap) -> bool {
 fn asset(content_type: &'static str, body: &'static [u8], cacheable: bool) -> Response {
     let cache = if cacheable { "public, max-age=86400" } else { "no-cache" };
     ([(header::CONTENT_TYPE, content_type), (header::CACHE_CONTROL, cache)], body).into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct KickCallback { #[serde(default)] code:String, #[serde(default)] state:String, error:Option<String> }
+async fn kick_callback(State(app):State<App>,axum::extract::Query(q):axum::extract::Query<KickCallback>)->Response{
+    let result=if q.error.is_some(){Err("Anulowano zgodę w Kicku. Wróć do ustawień LiMBOCHAT.".into())}else{app.hub.kick_callback(q.code,q.state).await};
+    let (status,text)=match result{Ok(())=>(StatusCode::OK,"Połączono konto Kick. Wróć do LiMBOCHAT i kliknij „Połącz ponownie kanały Kick”.".to_owned()),Err(e)=>(StatusCode::BAD_REQUEST,e)};
+    (status,[(header::CONTENT_TYPE,"text/plain; charset=utf-8"),(header::CACHE_CONTROL,"no-store"),(header::REFERRER_POLICY,"no-referrer")],text).into_response()
 }
 
 async fn font(Path(name): Path<String>) -> Response {

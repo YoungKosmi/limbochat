@@ -617,6 +617,7 @@ impl Hub {
         }
     }
     fn ballot_owner(&self) -> Result<(String, String), String> {
+        if self.config.active.as_deref().is_some_and(crate::platform::is_kick){return Err(crate::platform::unavailable("ankiety i predykcje"));}
         match &self.auth {
             AuthState::LoggedIn { login, user_id } => Ok((login.clone(), user_id.clone())),
             _ => Err("Zaloguj konto nadawcy ankiet i predykcji.".into()),

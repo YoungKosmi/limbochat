@@ -6,6 +6,12 @@ pokazuje się w panelu w okienku „Co nowego”.
 
 ## Następna wersja
 
+- **Kick obok Twitcha** — wybór platformy przy dodawaniu kanału, osobne karty i równoczesne połączenia obu kont w ustawieniach.
+- **Czat i moderacja Kicka** — oficjalne OAuth z PKCE, wysyłanie wiadomości, timeout/ban/unban/usuwanie, natywne emotki oraz kanałowe 7TV. Sekret aplikacji i tokeny pozostają w sejfie systemowym.
+- **Alerty Kicka** — follow, suby, odnowienia, gifty, KICKs i nagrody odbierane przez podpisany webhook. Dodano osobny lokalny odbiornik i instrukcję konfiguracji.
+- **LimboAI i Studio na Kicku** — czat i moderacja, tytuł/kategoria, quiz, boss, historia widza, pamięć, momenty, powtórki, obraz i profile korzystają z platformy aktywnej karty.
+- Funkcje bez odpowiednika w publicznym API Kicka (m.in. ankiety i predykcje) mają wyraźny komunikat; nie przełączają działań na konto Twitcha. Zmiana kanału anuluje oczekującą akcję moderacji.
+
 ## 0.7.4 — 2026-10-31
 
 - 🗣️ **Głos się nie przełącza w kółko** — gdy skończy się dzienny limit naturalnego głosu, LimboAI mówi głosem systemowym do ok. 9:00 (wcześniej co 5 min próbował wrócić) i pisze o tym w panelu.

@@ -44,6 +44,8 @@ include!("studio_hub.rs");
 pub type Outbox = mpsc::UnboundedSender<Arc<str>>;
 
 pub enum Request {
+    KickCallback { code:String, state:String, reply:oneshot::Sender<Result<(),String>> },
+    KickTool { channel:Option<ChannelRef>, name:String, args:serde_json::Value, reply:oneshot::Sender<Result<serde_json::Value,String>> },
     StudioCommand { command:crate::studio::Command, reply:oneshot::Sender<Result<serde_json::Value,String>> },
     StudioDone(StudioResult),
     /// Nowe połączenie panelu: odpowiedź = migawka + subskrypcja zdarzeń.
@@ -98,6 +100,12 @@ pub struct HubHandle {
 }
 
 impl HubHandle {
+    pub async fn kick_callback(&self, code:String, state:String)->Result<(),String>{
+        let (reply,rx)=oneshot::channel();self.requests.send(Request::KickCallback{code,state,reply}).map_err(|_|"Silnik jest wyłączony.".to_owned())?;rx.await.map_err(|_|"Przerwano logowanie.".to_owned())?
+    }
+    pub async fn kick_tool(&self,channel:Option<ChannelRef>,name:String,args:serde_json::Value)->Result<serde_json::Value,String>{
+        let (reply,rx)=oneshot::channel();self.requests.send(Request::KickTool{channel,name,args,reply}).map_err(|_|"Silnik jest wyłączony.".to_owned())?;rx.await.map_err(|_|"Przerwano polecenie Kicka.".to_owned())?
+    }
     pub async fn studio_command(&self,command:crate::studio::Command)->Result<serde_json::Value,String>{
         let(reply,rx)=oneshot::channel();self.requests.send(Request::StudioCommand{command,reply}).map_err(|_|"Panel nie działa.".to_owned())?;rx.await.map_err(|_|"Panel nie odpowiedział.".to_owned())?
     }
@@ -197,6 +205,8 @@ impl Channel {
 }
 
 pub struct Hub {
+    kick: Arc<crate::kick::Client>,
+    kick_status: serde_json::Value,
     config: Config,
     channels: Vec<Channel>,
     auth: AuthState,
@@ -266,6 +276,8 @@ impl Hub {
             (Some(b.commands), Some(b.emotes), Some(b.helix))
         };
         let config = config::load();
+        let kick=crate::kick::Client::new(config.kick.clone(),ui_tx.clone(),store.clone(),demo_mode);
+        { let _guard=rt.enter(); kick.start(shutdown.clone()); }
         let jarvis_status = Arc::new(std::sync::Mutex::new(JarvisStatus::default()));
         let memory = Arc::new(Memory::load());
         let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
@@ -286,6 +298,8 @@ impl Hub {
         );
 
         let mut hub = Hub {
+            kick,
+            kick_status: serde_json::json!({"state":"restoring"}),
             config,
             channels: Vec::new(),
             auth: AuthState::Restoring,
@@ -388,6 +402,11 @@ impl Hub {
     }
 
     fn command(&self, cmd: Command) {
+        let is_kick=match &cmd {
+            Command::Join(c)|Command::Part(c)=>crate::platform::is_kick(c),
+            Command::SendMessage{channel,..}|Command::Timeout{channel,..}|Command::Ban{channel,..}|Command::Unban{channel,..}|Command::DeleteMessage{channel,..}=>crate::platform::is_kick(&channel.login),_=>false,
+        };
+        if is_kick { let kick=self.kick.clone();tokio::spawn(kick.command(cmd));return; }
         if let Some(backend) = &self.backend {
             let _ = backend.send(cmd);
         }
@@ -424,6 +443,7 @@ impl Hub {
 
     fn snapshot(&self) -> Snapshot {
         Snapshot {
+            kick:self.kick_status.clone(),
             auth: auth_dto(&self.auth),
             avatar: self.avatar.clone(),
             settings: self.config.clone(),
@@ -449,7 +469,7 @@ impl Hub {
 
     /// Kontekst dla Jarvisa: kto jest zalogowany, który kanał jest otwarty, kto pisze.
     fn jarvis_context(&self) -> jarvis::tools::Context {
-        let me = match &self.auth {
+        let mut me = match &self.auth {
             AuthState::LoggedIn { login, user_id } => Some((login.clone(), user_id.clone())),
             _ => None,
         };
@@ -460,6 +480,9 @@ impl Hub {
             .and_then(|login| self.channels.iter().find(|c| &c.login == login))
             .or_else(|| self.channels.first());
         let mut chatters = Vec::new();
+        if active.is_some_and(|c|crate::platform::is_kick(&c.login)) {
+            me=if self.kick_status["state"]=="logged_in" {self.kick_status["login"].as_str().zip(self.kick_status["user_id"].as_str()).map(|(l,id)|(format!("kick:{l}"),format!("kick:{id}")))}else{None};
+        }
         let mut seen = std::collections::HashSet::new();
         let mut recent = Vec::new();
         if let Some(ch) = active {
@@ -475,7 +498,7 @@ impl Hub {
             active: active.and_then(|c| c.channel_ref()),
             can_moderate_active: active.is_some_and(|c| c.can_moderate),
             memory: if self.config.memory.enabled {
-                chatters.iter().take(25).filter_map(|c| Some((c.name.clone(), self.memory.brief(&c.login)?))).collect()
+                chatters.iter().take(25).filter_map(|c| Some((c.name.clone(), self.memory.brief(&crate::platform::viewer(active.map(|c|c.login.as_str()).unwrap_or_default(),&c.login))?))).collect()
             } else {
                 Vec::new()
             },
@@ -490,10 +513,11 @@ impl Hub {
 
     /// Ostatnie alerty (własny kanał, a bez logowania — otwarty) i suma od początku streama.
     fn support_report(&self) -> serde_json::Value {
-        let own = match &self.auth {
+        let kick_own=self.kick_status["login"].as_str().map(|s|format!("kick:{s}"));
+        let own = if self.config.active.as_deref().is_some_and(crate::platform::is_kick){kick_own.as_deref()}else{match &self.auth {
             AuthState::LoggedIn { login, .. } => Some(login.as_str()),
             _ => None,
-        };
+        }};
         let channel = own
             .and_then(|login| self.channels.iter().find(|c| c.login == login))
             .or_else(|| self.config.active.as_ref().and_then(|a| self.channels.iter().find(|c| &c.login == a)));
@@ -576,6 +600,11 @@ impl Hub {
 
     fn on_event(&mut self, event: UiEvent) {
         match event {
+            UiEvent::Disconnected{channel}=>{if let Some(c)=self.channel_mut(&channel){c.id=None;c.can_moderate=false;}self.broadcast(&ServerMsg::Disconnected{channel});}
+            UiEvent::PlatformStatus{platform,data}=>{
+                if platform=="kick" {self.kick_status=data.clone();}
+                self.broadcast(&ServerMsg::PlatformStatus{platform,data});
+            }
             UiEvent::Connected { channel, channel_id } => {
                 if let Some(ch) = self.channel_mut(&channel) {
                     ch.id = Some(channel_id);
@@ -653,16 +682,18 @@ impl Hub {
                 self.broadcast(&ServerMsg::Badges { channel, map: dto });
             }
             UiEvent::Notice { channel, text } => self.notice(channel, text, false),
-            UiEvent::Unbanned{channel,login}=>self.studio.moderation(&channel,&login,"unban","Potwierdzone przez Twitch"),
+            UiEvent::Unbanned{channel,login}=>self.studio.moderation(&channel,&login,"unban","Potwierdzone przez API platformy"),
             UiEvent::Alert(alert) => self.on_alert(*alert, false),
             UiEvent::Error { channel, text } => self.notice(channel, text, true),
         }
     }
 
     fn push_message(&mut self, msg: ParsedMessage) {
+        if !self.channels.iter().any(|c|c.login==msg.channel_login){return;}
         self.studio_chat(&msg);
         let dto = MessageDto::from(&msg);
-        if let (AuthState::LoggedIn { login, .. }, Some(j)) = (&self.auth, &self.jarvis) {
+        let own=if crate::platform::is_kick(&msg.channel_login){self.kick_status["login"].as_str()}else{match &self.auth{AuthState::LoggedIn{login,..}=>Some(login.as_str()),_=>None}};
+        if let (Some(login), Some(j)) = (own, &self.jarvis) {
             if self.config.jarvis.read_mentions && mentions(&msg.raw_text, &msg.sender_login, login) {
                 j.mention(msg.sender_name.clone(), msg.raw_text.clone());
             }
@@ -721,6 +752,8 @@ impl Hub {
 
     fn on_request(&mut self, request: Request) {
         match request {
+            Request::KickCallback{code,state,reply}=>{let kick=self.kick.clone();tokio::spawn(async move{let result=kick.callback(&code,&state).await;if let Err(e)=&result{kick.error(e).await;}let _=reply.send(result);});}
+            Request::KickTool{channel,name,args,reply}=>{let kick=self.kick.clone();let context=self.jarvis_context();if context.active!=channel{let _=reply.send(Err("Zmieniono aktywny kanał. Powtórz polecenie.".into()));}else{tokio::spawn(async move{let _=reply.send(crate::kick_tools::execute(kick,&context,&name,&args).await);});}}
             Request::StudioCommand{command,reply}=>{let result=self.studio_command(command,None);let _=reply.send(result);}
             Request::StudioDone(result)=>self.studio_done(result),
             Request::Connect { reply } => {
@@ -791,11 +824,28 @@ impl Hub {
     fn on_client(&mut self, msg: ClientMsg, conn: &Outbox) {
         match msg {
             ClientMsg::Studio{command}=>{if let Err(text)=self.studio_command(command,Some(conn)){Self::reply(conn,&ServerMsg::Notice{channel:None,text,error:true});}}
-            ClientMsg::Join { channel } => {
-                if let Err(text) = self.open_channel(&channel) {
+            ClientMsg::Join { channel, platform } => {
+                if let Err(text) = crate::platform::channel(&channel,platform.as_deref()).and_then(|c|self.open_channel(&c)) {
                     Self::reply(conn, &ServerMsg::Notice { channel: None, text, error: true });
                 }
             }
+            ClientMsg::KickSettings{client_id,webhooks,client_secret,clear_secret}=>{
+                let client_id=client_id.trim().to_owned();
+                if client_id.len()>200 || !client_id.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_'){self.notice(None,"Niepoprawny Client ID Kicka.",true);return;}
+                self.config.kick=crate::kick::Config{client_id,webhooks};self.save_config();
+                self.broadcast(&ServerMsg::Settings(self.config.clone()));
+                let kick=self.kick.clone();let config=self.config.kick.clone();let tx=self.ui_tx.clone();
+                tokio::spawn(async move{if let Err(text)=kick.configure(config,client_secret,clear_secret).await{let _=tx.send(UiEvent::error(text));}});
+            }
+            ClientMsg::PlatformLogin{platform}=>{
+                if platform=="twitch" {self.command(Command::Login)}else if platform=="kick" {
+                    let kick=self.kick.clone();let tx=self.ui_tx.clone();tokio::spawn(async move{match kick.begin_login().await{Ok(url)=>{let _=open::that_detached(url);},Err(text)=>{let _=tx.send(UiEvent::error(text));}}});
+                }
+            }
+            ClientMsg::PlatformLogout{platform}=>{
+                if platform=="twitch"{self.command(Command::Logout)}else if platform=="kick"{let kick=self.kick.clone();let tx=self.ui_tx.clone();tokio::spawn(async move{if let Err(text)=kick.logout().await{let _=tx.send(UiEvent::error(text));}});}
+            }
+            ClientMsg::KickReconnect=>{for c in &self.channels {if crate::platform::is_kick(&c.login){self.command(Command::Join(c.login.clone()));}}}
             ClientMsg::Theme { accent } => self.set_accent(&accent),
             ClientMsg::Part { channel } => {
                 self.channels.retain(|c| c.login != channel);
@@ -804,8 +854,10 @@ impl Hub {
                 self.broadcast(&ServerMsg::ChannelRemoved { channel });
             }
             ClientMsg::Activate { channel } => {
+                if !self.channels.iter().any(|c|c.login==channel){return;}
                 self.config.active = Some(channel);
                 self.save_config();
+                self.broadcast(&ServerMsg::Settings(self.config.clone()));
             }
             ClientMsg::Login => self.command(Command::Login),
             ClientMsg::CancelLogin => self.command(Command::CancelLogin),
@@ -838,8 +890,11 @@ impl Hub {
             }
             ClientMsg::Emotes { channel } => {
                 let id = self.channels.iter().find(|c| c.login == channel).and_then(|c| c.id.clone());
-                let emotes: Vec<EmoteDto> =
+                let mut emotes: Vec<EmoteDto> =
                     self.emote_map(id.as_deref()).sorted_for_picker().iter().map(|e| EmoteDto::from(e.as_ref())).collect();
+                if crate::platform::is_kick(&channel){
+                    if let Some(ch)=self.channels.iter().find(|c|c.login==channel){for m in &ch.history{for segment in &m.segments{if let parser::Segment::Emote(e)=segment{if e.base.provider==crate::emotes::EmoteProvider::Kick && !emotes.iter().any(|x|x.name==e.base.name.as_ref()){emotes.push(EmoteDto::from(e.base.as_ref()));}}}}}
+                }
                 Self::reply(conn, &ServerMsg::EmoteList { channel, emotes });
             }
             ClientMsg::Open { url } => {
@@ -1038,20 +1093,18 @@ impl Hub {
 
     /// Otwiera kanał (lub przełącza na już otwarty) we wszystkich panelach.
     fn open_channel(&mut self, name: &str) -> Result<String, String> {
-        let login = name.trim().trim_start_matches(['#', '@']).to_lowercase();
-        let valid = (1..=25).contains(&login.len()) && login.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-        if !valid {
-            return Err(format!("„{login}” to niepoprawna nazwa kanału"));
-        }
+        let login = crate::platform::channel(name,None)?;
         if self.channel_mut(&login).is_none() {
             let mut ch = Channel::new(login.clone());
             ch.id = self.demo.as_ref().map(|_| "0".to_owned());
+            ch.can_moderate=self.demo.is_some();
             self.channels.push(ch);
             self.command(Command::Join(login.clone()));
         }
         self.config.active = Some(login.clone());
         self.save_config();
         self.broadcast(&ServerMsg::ChannelAdded { channel: login.clone() });
+        self.broadcast(&ServerMsg::Settings(self.config.clone()));
         Ok(login)
     }
 
@@ -1094,6 +1147,7 @@ impl Hub {
     // ── Alerty ─────────────────────────────────────────────────────────
 
     fn on_alert(&mut self, alert: ChatAlert, test: bool) {
+        if !test && crate::platform::is_kick(&alert.channel_login) && !self.channels.iter().any(|c|c.login==alert.channel_login){return;}
         let settings = self.config.alerts.clone();
         match &alert.kind {
             AlertKind::NewChatter if !settings.new_chatters => {
@@ -1144,7 +1198,7 @@ impl Hub {
         let channel = if self.channels.iter().any(|c| c.login == alert.channel_login) {
             alert.channel_login.clone()
         } else {
-            match self.config.active.clone().filter(|a| self.channels.iter().any(|c| &c.login == a)).or_else(|| self.channels.first().map(|c| c.login.clone())) {
+            match self.config.active.clone().filter(|a| crate::platform::is_kick(a)==crate::platform::is_kick(&alert.channel_login) && self.channels.iter().any(|c| &c.login == a)).or_else(|| self.channels.iter().find(|c|crate::platform::is_kick(&c.login)==crate::platform::is_kick(&alert.channel_login)).map(|c|c.login.clone())) {
                 Some(c) => c,
                 None => return,
             }
@@ -1208,7 +1262,7 @@ impl Hub {
 
     fn on_rhyme(&mut self, channel: &str, id: &str, rhyme: Option<String>) {
         let settings = self.config.alerts.clone();
-        let logged_in = matches!(self.auth, AuthState::LoggedIn { .. });
+        let logged_in = if crate::platform::is_kick(channel){self.kick_status["state"]=="logged_in"}else{matches!(self.auth, AuthState::LoggedIn { .. })};
         let Some(ch) = self.channel_mut(channel) else { return };
         let channel_ref = ch.channel_ref();
         let Some(entry) = ch.alerts.iter_mut().find(|m| m.id == id) else { return };
@@ -1243,10 +1297,11 @@ impl Hub {
 
     fn track_message(&mut self, msg: &ParsedMessage) {
         let stream_id = self.stats.as_ref().filter(|s| s.channel == msg.channel_login).map_or(0, |s| s.id);
+        let memory_key=crate::platform::viewer(&msg.channel_login,&msg.sender_login);
         if self.config.memory.enabled {
-            self.memory.on_message(&msg.sender_login, &msg.sender_name, stream_id);
+            self.memory.on_message(&memory_key, &msg.sender_name, stream_id);
             if self.config.memory.learn {
-                self.learn_buffer.push((msg.sender_login.to_lowercase(), msg.sender_name.clone(), msg.raw_text.chars().take(200).collect()));
+                self.learn_buffer.push((memory_key, msg.sender_name.clone(), msg.raw_text.chars().take(200).collect()));
                 if self.learn_buffer.len() > 400 {
                     self.learn_buffer.drain(..100);
                 }
@@ -1266,7 +1321,8 @@ impl Hub {
     }
 
     fn track_alert(&mut self, alert: &ChatAlert, in_wave: bool) {
-        let (login, name) = (alert.user_login.as_str(), alert.user_name.as_str());
+        let memory_key=crate::platform::viewer(&alert.channel_login,&alert.user_login);
+        let (login, name) = (memory_key.as_str(), alert.user_name.as_str());
         if self.config.memory.enabled {
             match &alert.kind {
                 AlertKind::Bits { amount } => self.memory.on_support(login, name, *amount, None, 0),
@@ -1339,11 +1395,13 @@ impl Hub {
     }
 
     fn start_stream(&mut self, started_at: chrono::DateTime<chrono::Utc>) {
-        let channel = match &self.auth {
+        let channel = if self.config.active.as_deref().is_some_and(crate::platform::is_kick) {
+            match self.kick_status["login"].as_str(){Some(login)=>format!("kick:{login}"),None=>return}
+        }else{match &self.auth {
             AuthState::LoggedIn { login, .. } => login.clone(),
             _ if self.demo.is_some() => "demo".into(),
             _ => return,
-        };
+        }};
         tracing::info!("stream wystartował — zbieram statystyki do podsumowania (#{channel})");
         self.stats = Some(Stats::start(&channel, started_at));
         self.stream_ended = None;
@@ -1357,6 +1415,18 @@ impl Hub {
                 st.on_viewers(n, chrono::Utc::now());
             }
             return;
+        }
+        let channel=self.stats.as_ref().map(|s|s.channel.as_str()).or(self.config.active.as_deref());
+        if channel.is_some_and(crate::platform::is_kick){
+            let Some(login)=self.kick_status["login"].as_str().map(str::to_owned)else{return};
+            let (kick,hub)=(self.kick.clone(),self.me.clone());
+            tokio::spawn(async move{
+                let Ok(v)=kick.request(reqwest::Method::GET,&format!("v1/channels?slug={login}"),None,true).await else{return};
+                let Some(info)=v["data"].as_array().and_then(|a|a.first())else{return};
+                let viewers=if info["stream"]["is_live"]==true {info["stream"]["viewer_count"].as_u64()}else{None};
+                let started_at=info["stream"]["start_time"].as_str().and_then(|s|chrono::DateTime::parse_from_rfc3339(s).ok()).map(|d|d.with_timezone(&chrono::Utc));
+                let _=hub.requests.send(Request::TwitchLive{viewers,started_at});
+            });return;
         }
         let (AuthState::LoggedIn { user_id, .. }, Some(helix)) = (&self.auth, &self.helix) else { return };
         let (helix, id, hub) = (helix.clone(), user_id.clone(), self.me.clone());
@@ -1425,15 +1495,19 @@ impl Hub {
         let demo = self.demo.is_some();
         let jarvis = self.jarvis.clone();
         let hub = self.me.clone();
+        let kick=self.kick.clone();
         tokio::spawn(async move {
-            let (title, category) = match (helix, own_id) {
+            let (title, category) = if crate::platform::is_kick(&sum.channel){
+                let info=kick.request(reqwest::Method::GET,&format!("v1/channels?slug={}",crate::platform::slug(&sum.channel)),None,true).await.unwrap_or_default();
+                (info["data"][0]["stream_title"].as_str().map(str::to_owned),info["data"][0]["category"]["name"].as_str().map(str::to_owned))
+            }else{match (helix, own_id) {
                 (Some(h), Some(id)) => match h.channel_info(&id).await {
                     Ok(Some(info)) => (Some(info.title), Some(info.game_name)),
                     _ => (None, None),
                 },
                 _ if demo => (Some("Wieczorne granie z czatem".to_owned()), Some("Just Chatting".to_owned())),
                 _ => (None, None),
-            };
+            }};
             let mut with_meta = sum.clone();
             with_meta.title = title.clone();
             with_meta.category = category.clone();
@@ -1662,6 +1736,7 @@ fn is_greeting(text: &str) -> bool {
 /// Opis zdarzenia dla rymowanki (None = bez rymowanki).
 fn rhyme_event(alert: &ChatAlert) -> Option<String> {
     Some(match &alert.kind {
+        AlertKind::Kicks { amount } => format!("wysłał(a) {amount} KICKs na Kicku"),
         AlertKind::Bits { amount } => format!("wysłał(a) {amount} bitsów"),
         AlertKind::Sub { months, resub: true, .. } => format!("subskrybuje kanał już {months} miesięcy"),
         AlertKind::Sub { tier, .. } if tier == "Prime" => "zasubskrybował(a) kanał przez Prime".into(),
@@ -1680,6 +1755,7 @@ fn rhyme_event(alert: &ChatAlert) -> Option<String> {
 fn alert_dto(alert: &ChatAlert) -> AlertDto {
     let mut d = AlertDto::default();
     match &alert.kind {
+        AlertKind::Kicks { amount } => {d.kind="kicks".into();d.amount=*amount;}
         AlertKind::Bits { amount } => {
             d.kind = "bits".into();
             d.amount = *amount;

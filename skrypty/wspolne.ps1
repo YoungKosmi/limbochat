@@ -90,6 +90,7 @@ function Get-SourceFiles {
     $walk = {
         param($dir, $prefix)
         foreach ($item in Get-ChildItem -LiteralPath $dir -Force) {
+            if ($item.Name -eq '.git') { continue }
             $rel = if ($prefix) { "$prefix/$($item.Name)" } else { $item.Name }
             if ($item.PSIsContainer) {
                 if ($skipDirs -notcontains $item.Name) { & $walk $item.FullName $rel }
@@ -220,7 +221,7 @@ function Publish-Source($repo, $message) {
         $bytes = [IO.File]::ReadAllBytes($f.Full)
         # Tak samo jak Git + .gitattributes: tekst w repozytorium ma LF.
         # UTF-8 BOM skryptów PowerShell pozostaje zachowany dla Windows PowerShell 5.1.
-        if ($f.Path -match '\.(rs|toml|lock|md|js|css|html|yml|yaml|ps1|bat|txt)$|(^|/)(\.gitignore|\.gitattributes|\.editorconfig)$') {
+        if ($f.Path -match '\.(rs|toml|lock|md|js|mjs|css|html|yml|yaml|ps1|bat|txt)$|(^|/)(\.gitignore|\.gitattributes|\.editorconfig)$') {
             $bytes = [Text.Encoding]::UTF8.GetBytes([Text.Encoding]::UTF8.GetString($bytes).Replace("`r`n", "`n"))
         }
         $content = [Convert]::ToBase64String($bytes)
@@ -244,7 +245,7 @@ function Publish-Source($repo, $message) {
     # Opis, strona i tematy repozytorium (w GitHub Actions pomijamy — token wydania nie ma prawa zmieniać ustawień repo).
     if ($env:GITHUB_ACTIONS -eq 'true') { return $publishedHead }
     $about = @{
-        description = 'Czat Twitcha w OBS: emotki 7TV, moderacja, asystent głosowy LimboAI, animowane alerty, overlay i autoaktualizacje. Rust.'
+        description = 'Czat Twitch i Kick w OBS: emotki 7TV, moderacja, asystent głosowy LimboAI, gry czatu, alerty, overlay i autoaktualizacje. Rust.'
         homepage = "https://github.com/$repo/releases/latest"
         has_wiki = $false
     }

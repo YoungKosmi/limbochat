@@ -27,6 +27,7 @@ const ICONS = {
 const state = {
   ws: null,
   auth: { state: "restoring" },
+  kick: { state: "logged_out" },
   avatar: null,
   settings: { animations: true, timestamps: true, mod_buttons: true },
   globalBadges: {},
@@ -85,18 +86,26 @@ function handle(msg) {
       if (ch) { ch.connected = true; system(msg.channel, `Połączono z #${msg.channel}`, false); renderTabs(); renderComposer(); renderStatus(); }
       return;
     }
+    case "disconnected": {
+      const ch = state.channels.get(msg.channel);
+      if (ch) { ch.connected = false; ch.canModerate = false; renderAll(); }
+      return;
+    }
     case "channel_added": {
       if (!state.channels.has(msg.channel)) addChannel({ login: msg.channel, connected: state.demo, can_moderate: state.demo, emote_count: 0, badges: {}, messages: [] });
       return activate(msg.channel);
     }
     case "channel_removed": return removeChannel(msg.channel);
     case "auth": return setAuth(msg);
+    case "platform_status":
+      if (msg.platform === "kick") { state.kick = msg.data; renderPlatformAccounts(); renderAll(); }
+      return;
     case "avatar": state.avatar = msg.url; return renderAccount();
     case "mod_status": {
       const ch = state.channels.get(msg.channel);
       if (!ch) return;
       ch.canModerate = msg.can_moderate;
-      if (!msg.can_moderate) system(msg.channel, "Nie masz uprawnień moderatora na tym kanale — możesz pisać, ale nie moderować.", false);
+      if (!msg.can_moderate) system(msg.channel, isKick(msg.channel) ? "Kick: uprawnienia moderatora potwierdzę po Twojej wiadomości na tym kanale." : "Nie masz uprawnień moderatora na tym kanale — możesz pisać, ale nie moderować.", false);
       return renderStatus();
     }
     case "badges":
@@ -136,6 +145,7 @@ function applySnapshot(s) {
   state.avatar = s.avatar;
   // Najpierw logowanie — od niego zależy podświetlanie wzmianek w historii.
   state.auth = s.auth;
+  state.kick = s.kick || { state: "logged_out" };
   $("chats").replaceChildren();
   state.channels.clear();
   state.order = [];
@@ -260,6 +270,9 @@ function activate(login, notify = true) {
 function activeChannel() {
   return state.active ? state.channels.get(state.active) : null;
 }
+function isKick(channel = state.active) { return (channel || "").startsWith("kick:"); }
+function channelName(channel) { return (channel || "").replace(/^kick:/, ""); }
+function channelAuth(channel = state.active) { return isKick(channel) ? state.kick : state.auth; }
 
 function renderTabs() {
   const tabs = $("tabs");
@@ -277,7 +290,11 @@ function renderTabs() {
     const dot = document.createElement("i");
     dot.className = "dot";
     const name = document.createElement("span");
-    name.textContent = `#${login}`;
+    name.textContent = `#${channelName(login)}`;
+    const platform = document.createElement("span");
+    platform.className = `platform-label ${isKick(login) ? "platform-kick" : "platform-twitch"}`;
+    platform.textContent = isKick(login) ? "KICK" : "TW";
+    tab.append(platform);
     tab.append(dot, name);
     if (ch.unread > 0 && login !== state.active) {
       const badge = document.createElement("span");
@@ -311,12 +328,13 @@ function moveIndicator() {
 
 // ── Wiadomości ──────────────────────────────────────────────────────────
 
-function myLogin() {
-  return state.auth.state === "logged_in" ? state.auth.login.toLowerCase() : null;
+function myLogin(channel = state.active) {
+  const auth = channelAuth(channel);
+  return auth?.state === "logged_in" ? auth.login.toLowerCase() : null;
 }
 
 function mentionsMe(m) {
-  const me = myLogin();
+  const me = myLogin(m.channel);
   if (!me || m.login === me) return false;
   return m.raw.split(/[^\p{L}\p{N}_]+/u).some((w) => w.toLowerCase() === me);
 }
@@ -378,7 +396,7 @@ function renderMessage(ch, m, live) {
   row.append(time);
 
   for (const [set, version] of m.badges) {
-    const badge = ch.badges[`${set}/${version}`] || state.globalBadges[`${set}/${version}`];
+    const badge = ch.badges[`${set}/${version}`] || (!isKick(m.channel) && state.globalBadges[`${set}/${version}`]);
     if (badge) {
       const img = document.createElement("img");
       img.className = "badge-img";
@@ -533,6 +551,7 @@ const ALERT_ICONS = {
 
 function alertLook(a) {
   switch (a.kind) {
+    case "kicks": return { icon: "gem", color: "#53fc18", big: a.amount >= 1000, label: "KICKs" };
     case "bits": return { icon: "gem", color: bitsColor(a.amount), big: a.amount >= 1000, label: "Bitsy" };
     case "bits_badge": return { icon: "gem", color: bitsColor(a.amount), big: true, label: "Odznaka bitsów" };
     case "sub": case "resub": return { icon: "star", color: a.tier === "3" ? "#ff9d2e" : "#f5c451", big: a.tier === "3", label: a.tier === "Prime" ? "Prime" : `Sub · Tier ${a.tier || 1}` };
@@ -568,6 +587,7 @@ function alertTitle(m, a) {
   const add = (...parts) => f.append(...parts.map((p) => (typeof p === "string" ? document.createTextNode(p) : p)));
   switch (a.kind) {
     case "bits": add(b(name), " wysyła ", count(a.amount), ` ${plural(a.amount, "bit", "bity", "bitsów")}!`); break;
+    case "kicks": add(b(name), " wysyła ", count(a.amount), " KICKs!"); break;
     case "bits_badge": add(b(name), " zdobywa odznakę ", count(a.amount), " bitsów!"); break;
     case "sub": add(b(name), a.tier === "Prime" ? " subskrybuje z Prime!" : " subskrybuje kanał!"); break;
     case "resub": add(b(name), " subskrybuje już ", count(a.amount), ` ${plural(a.amount, "miesiąc", "miesiące", "miesięcy")}!`); break;
@@ -954,14 +974,15 @@ function openUserMenu(event, ch, m, row) {
   const mem = document.createElement("div");
   mem.className = "mem";
   mem.id = "mem-box";
-  mem.dataset.login = m.login;
+  const memoryLogin = isKick(ch.login) ? `kick:${m.login}` : m.login;
+  mem.dataset.login = memoryLogin;
   mem.dataset.name = m.name;
   mem.textContent = "🧠 …";
   mem.addEventListener("click", (e) => e.stopPropagation());
   menu.append(mem, sep());
   const studioViewer=document.createElement("button");studioViewer.className="item";studioViewer.textContent="Historia moderacji i wiadomości";
   studioViewer.onclick=()=>{const url=new URL("/studio",location.href);url.searchParams.set("channel",ch.login);url.searchParams.set("login",m.login);send({c:"open",url:url.href});closePopovers();};menu.append(studioViewer);
-  send({ c: "memory_get", login: m.login });
+  send({ c: "memory_get", login: memoryLogin });
 
   const item = (icon, label, onClick, cls = "") => {
     const b = document.createElement("button");
@@ -1002,7 +1023,7 @@ function openUserMenu(event, ch, m, row) {
   menu.append(sep());
   item("copy", "Kopiuj wiadomość", () => copy(m.raw));
   item("user", "Kopiuj nick", () => copy(m.login));
-  item("link", "Otwórz profil", () => send({ c: "open", url: `https://www.twitch.tv/${m.login}` }));
+  item("link", "Otwórz profil", () => send({ c: "open", url: `https://${isKick(m.channel) ? "kick.com" : "www.twitch.tv"}/${m.login}` }));
 
   menu.hidden = false;
   menu._at = { x: event.clientX, y: event.clientY };
@@ -1451,6 +1472,15 @@ function setAuth(auth) {
 function renderAccount() {
   const box = $("account");
   box.replaceChildren();
+  renderPlatformAccounts();
+  if (isKick()) {
+    const button = document.createElement("button");
+    button.className = "btn-ghost platform-kick";
+    button.textContent = state.kick.state === "logged_in" ? `Kick · ${state.kick.login}` : "Połącz Kick";
+    button.onclick = () => { $("settings").hidden = false; };
+    box.append(button);
+    return;
+  }
   const a = state.auth;
   if (a.state === "restoring") {
     const s = document.createElement("div");
@@ -1491,6 +1521,35 @@ function renderAccount() {
     box.append(chip);
   }
 }
+
+function renderPlatformAccounts() {
+  const kick = state.kick || {}, twitch = state.auth || {}, cfg = state.settings.kick || {};
+  $("twitch-connection").textContent = twitch.state === "logged_in" ? twitch.login : twitch.state === "pending" ? "Oczekiwanie na zgodę…" : "Niepołączone";
+  $("kick-connection").textContent = kick.state === "logged_in" ? kick.login : kick.state === "pending" ? "Oczekiwanie na zgodę w przeglądarce…" : "Niepołączone";
+  $("twitch-connect").hidden = twitch.state === "logged_in";
+  $("twitch-disconnect").hidden = twitch.state !== "logged_in";
+  $("kick-connect").hidden = kick.state === "logged_in";
+  $("kick-disconnect").hidden = !["logged_in", "pending"].includes(kick.state);
+  if (document.activeElement !== $("kick-client-id")) $("kick-client-id").value = cfg.client_id || "";
+  $("kick-webhooks").checked = !!cfg.webhooks;
+  $("kick-client-secret").placeholder = kick.secret_saved ? "Sekret zapisany w sejfie · wpisz tylko, aby zmienić" : "Client Secret aplikacji Kick";
+  $("kick-open-login").hidden = !kick.auth_url;
+  $("kick-webhook-status").textContent = kick.error || (kick.last_event ? `Ostatnie zdarzenie Kicka: ${new Date(kick.last_event).toLocaleTimeString("pl-PL")}` : `Odbiornik: ${kick.listener ? "gotowy" : "nieaktywny"} · subskrypcje: ${kick.subscriptions || 0} · oczekiwanie na pierwszy webhook`);
+}
+for (const platform of ["twitch", "kick"]) {
+  $(platform + "-connect").onclick = () => send({ c: "platform_login", platform });
+  $(platform + "-disconnect").onclick = () => send({ c: "platform_logout", platform });
+}
+$("kick-save").onclick = () => {
+  const secret = $("kick-client-secret").value;
+  send({ c: "kick_settings", client_id: $("kick-client-id").value.trim(), webhooks: $("kick-webhooks").checked, client_secret: secret || null });
+  $("kick-client-secret").value = "";
+};
+$("kick-clear-secret").onclick = () => {
+  if (confirm("Rozłączyć konto Kick i usunąć jego sekret z sejfu?")) send({ c: "kick_settings", client_id: $("kick-client-id").value.trim(), webhooks: false, clear_secret: true });
+};
+$("kick-reconnect").onclick = () => send({ c: "kick_reconnect" });
+$("kick-open-login").onclick = () => { if (state.kick.auth_url) send({ c: "open", url: state.kick.auth_url }); };
 
 function openAccountMenu(event) {
   event.stopPropagation();
@@ -1536,12 +1595,12 @@ function tickLogin() {
 
 function renderComposer() {
   const ch = activeChannel();
-  const loggedIn = state.auth.state === "logged_in";
+  const loggedIn = channelAuth()?.state === "logged_in";
   const enabled = !!ch && loggedIn && ch.connected;
   const input = $("input");
   input.disabled = !enabled;
   $("emote-btn").disabled = !enabled;
-  input.placeholder = !ch ? "Otwórz kanał, aby pisać" : !loggedIn ? "Zaloguj się, aby pisać na czacie" : !ch.connected ? "Łączenie z kanałem…" : `Napisz na #${ch.login}…  (Tab — emotki)`;
+  input.placeholder = !ch ? "Otwórz kanał, aby pisać" : !loggedIn ? "Połącz konto tej platformy w ustawieniach" : !ch.connected ? "Łączenie z kanałem…" : `Napisz na #${channelName(ch.login)}…  (Tab — emotki)`;
   $("composer").hidden = !ch;
   updateCounter();
 }
@@ -1680,7 +1739,7 @@ function renderStatus() {
   if (!ch) { for (const k of ["bars", "perMin", "role", "paused"]) show(el[k], false); return; }
 
   el.live.className = ch.connected ? "live" : "live wait";
-  el.name.textContent = ch.connected ? `#${ch.login}` : `łączenie z #${ch.login}…`;
+  el.name.textContent = ch.connected ? `#${channelName(ch.login)} · ${isKick(ch.login) ? "Kick" : "Twitch"}` : `łączenie z #${channelName(ch.login)}…`;
   el.name.style.color = ch.connected ? "" : "var(--warn)";
 
   const now = Date.now();
@@ -1695,10 +1754,10 @@ function renderStatus() {
   show(el.bars, ch.connected);
   show(el.perMin, ch.connected);
 
-  const showRole = ch.connected && state.auth.state === "logged_in";
+  const showRole = ch.connected && channelAuth(ch.login)?.state === "logged_in";
   show(el.role, showRole);
   el.role.className = ch.canModerate ? "role mod" : "role viewer";
-  el.role.textContent = ch.canModerate ? "moderator" : "widz";
+  el.role.textContent = ch.canModerate ? "moderator" : isKick(ch.login) ? "konto połączone" : "widz";
   show(el.paused, !ch.atBottom);
   el.emotes.textContent = `7TV ${state.globalEmotes} · ${ch.emoteCount}`;
 }
@@ -1814,6 +1873,7 @@ function saveAccent(hex) {
 }
 
 function applySettings() {
+  renderPlatformAccounts();
   applyAccent(state.settings.accent);
   document.body.classList.toggle("no-anim", !state.settings.animations);
   document.body.classList.toggle("no-time", !state.settings.timestamps);
@@ -1833,6 +1893,7 @@ function saveSettings() {
 }
 
 function renderAll() {
+  renderAccount();
   renderTabs();
   renderComposer();
   renderStatus();
@@ -1927,11 +1988,11 @@ $("lobby-login").addEventListener("click", () => send({ c: "login" }));
 $("add-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const name = $("add-input").value.trim();
-  if (name) send({ c: "join", channel: name });
+  if (name) send({ c: "join", channel: name, platform: $("add-platform").value });
   closeAddTab();
 });
 $("add-input").addEventListener("keydown", (e) => { if (e.key === "Escape") closeAddTab(); });
-$("add-input").addEventListener("blur", () => setTimeout(() => { if (!$("add-input").value) closeAddTab(); }, 150));
+$("add-form").addEventListener("focusout", () => setTimeout(() => { if (!$("add-form").contains(document.activeElement) && !$("add-input").value) closeAddTab(); }, 150));
 
 $("input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); submit(); }

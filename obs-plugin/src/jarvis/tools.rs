@@ -74,6 +74,7 @@ pub struct Outcome {
 }
 
 struct Pending {
+    channel: Option<ChannelRef>,
     name: String,
     args: Value,
     at: Instant,
@@ -126,7 +127,7 @@ impl Executor {
     pub async fn run(&mut self, ctx: &Context, name: &str, args: &Value) -> Outcome {
         if is_destructive(name) {
             let label = describe_pending(name, args);
-            self.pending = Some(Pending { name: name.to_owned(), args: args.clone(), at: Instant::now(), label: label.clone() });
+            self.pending = Some(Pending { channel:ctx.chat_channel(), name: name.to_owned(), args: args.clone(), at: Instant::now(), label: label.clone() });
             return Outcome {
                 result: json!({
                     "ok": false,
@@ -152,6 +153,7 @@ impl Executor {
                     action: Some(Action { text: format!("↩ Anulowano: {}", pending.label), ok: true, url: None }),
                 };
             }
+            if pending.channel!=ctx.chat_channel(){return fail("Zmieniono kanał lub platformę. Akcja anulowana — wydaj polecenie ponownie.");}
             return self.execute(ctx, &pending.name, &pending.args).await;
         }
 
@@ -161,6 +163,13 @@ impl Executor {
     async fn execute(&mut self, ctx: &Context, name: &str, args: &Value) -> Outcome {
         if let Some(outcome) = self.execute_local(ctx, name, args).await {
             return outcome;
+        }
+        if ctx.active.as_ref().is_some_and(|c|crate::platform::is_kick(&c.login)) {
+            if ctx.demo {return self.execute_demo(ctx,name,args);}
+            return match &self.local.hub {
+                Some(hub)=>match hub.kick_tool(ctx.active.clone(),name.into(),args.clone()).await{Ok(v)=>ok(v,Some(format!("Kick: {name}"))),Err(e)=>fail(&e)},
+                None=>fail("Połączenie z Kickiem jest niedostępne."),
+            };
         }
         if ctx.demo || self.helix.is_none() {
             return self.execute_demo(ctx, name, args);
@@ -193,7 +202,7 @@ impl Executor {
         if matches!(name, "remember_viewer" | "forget_viewer" | "viewer_info") {
             let Some(memory) = &self.local.memory else { return Some(fail("Pamięć o widzach jest wyłączona (⚙ → Pamięć o widzach).")) };
             let spoken = s("user");
-            let (login, display) = match resolve_known(ctx, &spoken) {
+            let (mut login, display) = match resolve_known(ctx, &spoken) {
                 Some(c) => (c.login, c.name),
                 None => match memory.find(&spoken) {
                     Some((login, v)) => (login, v.name),
@@ -203,6 +212,9 @@ impl Executor {
                     }
                 },
             };
+            if let Some(channel)=ctx.active.as_ref().filter(|c|crate::platform::is_kick(&c.login)) {
+                if !login.starts_with("kick:"){login=crate::platform::viewer(&channel.login,&login);}
+            }
             if login.is_empty() {
                 return Some(fail(&format!("Nie wiem, kim jest „{spoken}”.")));
             }
@@ -1098,6 +1110,17 @@ mod tests {
         let out = ex.run(&c, "confirm_pending", &json!({ "confirmed": false })).await;
         assert!(out.action.unwrap().text.contains("Anulowano"));
         assert!(ex.pending_label().is_none());
+    }
+
+    #[tokio::test]
+    async fn switching_platform_cancels_pending_moderation() {
+        let mut ex=Executor::new(None,Local::default());
+        let mut c=ctx();c.active=Some(ChannelRef{login:"same".into(),id:"1".into()});
+        ex.run(&c,"ban_user",&json!({"user":"modziomek"})).await;
+        c.active=Some(ChannelRef{login:"kick:same".into(),id:"kick:1".into()});
+        let result=ex.run(&c,"confirm_pending",&json!({"confirmed":true})).await;
+        assert_eq!(result.result["ok"],false);
+        assert!(ex.pending.is_none());
     }
 
     #[test]

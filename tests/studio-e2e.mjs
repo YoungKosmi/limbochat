@@ -548,7 +548,58 @@ try {
         !arena.messages.some((m) => m.t === "studio" && m.event !== "public"),
     );
     assert(!arena.messages.some((m) => m.t === "snapshot"));
-    fs.writeFileSync(
+    // Two platforms can open the same slug without sharing history or tool targets.
+      let checkpoint = panel.messages.length;
+      panel.send({ c: "join", channel: "demo", platform: "kick" });
+      await panel.wait(
+          (m) => m.t === "channel_added" && m.channel === "kick:demo",
+          checkpoint,
+      );
+      await panel.studio(
+          "viewer",
+          { channel: "kick:demo", login: "testviewer" },
+          (m) =>
+              m.t === "studio" &&
+              m.event === "viewer" &&
+              m.data.channel === "kick:demo" &&
+              m.data.notes == null,
+      );
+      await panel.studio(
+          "ballots_refresh",
+          {},
+          (m) => m.t === "notice" && m.error && m.text.includes("Kick"),
+      );
+      await panel.studio(
+          "quiz_start",
+          { channel: "kick:demo", seconds: 30, voice: false },
+          (m) =>
+              m.t === "studio" &&
+              m.event === "public" &&
+              m.data.quiz?.channel === "kick:demo",
+      );
+      checkpoint = panel.messages.length;
+      panel.send({ c: "send", channel: "demo", text: "A" });
+      await panel.wait(
+          (m) => m.t === "message" && m.m.channel === "demo",
+          checkpoint,
+      );
+      checkpoint = panel.messages.length;
+      panel.send({ c: "send", channel: "kick:demo", text: "A" });
+      const kickScore = await panel.wait(
+          (m) =>
+              m.t === "studio" &&
+              m.event === "public" &&
+              m.data.quiz?.answers === 1,
+          checkpoint,
+      );
+      assert(kickScore.data.quiz.scores[0].points >= 100);
+      await panel.studio(
+          "quiz_stop",
+          {},
+          (m) => m.t === "studio" && m.event === "public" && m.data.quiz === null,
+      );
+      panel.send({ c: "activate", channel: "demo" });
+        fs.writeFileSync(
         path.join(work, "studio-e2e-result.json"),
         JSON.stringify(
             {
