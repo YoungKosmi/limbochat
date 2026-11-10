@@ -6,6 +6,8 @@ pokazuje się w panelu w okienku „Co nowego”.
 
 ## Następna wersja
 
+## 0.8.0 — 2026-11-10
+
 - **Kick obok Twitcha** — wybór platformy przy dodawaniu kanału, osobne karty i równoczesne połączenia obu kont w ustawieniach.
 - **Czat i moderacja Kicka** — oficjalne OAuth z PKCE, wysyłanie wiadomości, timeout/ban/unban/usuwanie, natywne emotki oraz kanałowe 7TV. Sekret aplikacji i tokeny pozostają w sejfie systemowym.
 - **Alerty Kicka** — follow, suby, odnowienia, gifty, KICKs i nagrody odbierane przez podpisany webhook. Dodano osobny lokalny odbiornik i instrukcję konfiguracji.
